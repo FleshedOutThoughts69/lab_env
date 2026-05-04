@@ -81,9 +81,9 @@ The system is not a layered architecture. It is a one-directional authority pipe
          └──────────────────┬──────────────────────────────┘
                             │ mutates
                             ▼
-                    ┌───────────────────┐
-                    │ System + state.json + audit.log │
-                    └───────────────────┘
+                    ┌────────────────────────────────┐
+                    │ System + state.json + audit.log| 
+                    └────────────────────────────────┘
 ```
 
 **The Observer/Executor boundary is the most important design decision in the codebase.** `conformance.Observer` and `executor.Executor` are distinct interfaces. The Executor embeds the Observer (mutation commands can also observe), but the Observer interface carries no mutation methods. Conformance checks receive only an Observer — they are structurally incapable of mutating the system. This is enforced at the type level, not by convention.
