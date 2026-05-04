@@ -50,7 +50,7 @@ The system is not a layered architecture. It is a one-directional authority pipe
 
 ```
                     ┌─────────────────────────────────────┐
-                    │         System Environment           │
+                    │         System Environment          │
                     └──────────────────┬──────────────────┘
                                        │ observed by
                                        ▼
@@ -124,7 +124,7 @@ UNPROVISIONED ──provision──► PROVISIONED
                            validate (pass)
                                   │
                                   ▼
-                ┌──── CONFORMANT ◄─────────────────────┐
+                ┌──── CONFORMANT ◄─────────────────────-┐
                 │         │                             │
           fault apply   external break              reset (any tier)
                 │         │                             │
