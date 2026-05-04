@@ -2,7 +2,7 @@
 
 ### Overview
 
-`lab-env` is a deterministic control-plane system that models:
+`lab-env` is best understood as a deterministic single-node chaos engineering lab: a miniature reliability control plane for fault injection, conformance validation, and state reconciliation, built as a spec-derived systems engineering exercise that models:
 
 - System health classification (CONFORMANT / DEGRADED / BROKEN)
 - Fault injection and tiered recovery cycles
