@@ -4,7 +4,7 @@
 
 `lab_env` is best understood as a deterministic single-node chaos engineering lab: a miniature reliability control plane for fault injection, conformance validation, and state reconciliation, built as a spec-derived systems engineering exercise that models:
 
-- System health classification (CONFORMANT / DEGRADED / BROKEN)
+- System health classification (CONFORMANT / DEGRADED / BROKEN / UNPROVISIONED / PROVISIONED / RECOVERING)
 - Fault injection and tiered recovery cycles
 - Runtime versus recorded state reconciliation
 - Strict separation between observation and mutation authority
