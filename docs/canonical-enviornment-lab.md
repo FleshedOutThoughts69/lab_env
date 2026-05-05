@@ -23,7 +23,7 @@ When sources disagree, resolve by priority (highest first):
 
 ## Conformance Model
 
-An environment is in exactly one of four states:
+An environment is in exactly one of six states:
 
 **Conformant:** all conformance suite checks pass. This is the baseline state. Every practice problem begins from this state unless the problem explicitly states a fault is active.
 
@@ -32,6 +32,10 @@ An environment is in exactly one of four states:
 **Non-conformant:** one or more behavioral checks fail due to build error, provisioning failure, or unintended learner modification. The environment MUST be reset before continuing.
 
 **Fault-state:** a fault from the fault catalog (§7) has been deliberately applied. The environment is intentionally non-conformant in a specific, documented way. The active fault ID MUST be recorded. Reset returns the environment to conformant.
+
+**Broken** one or more blocking conformance checks fail due to unintended modification, build failure, provisioning error, or manual intervention. No fault is active — this non-conformance was not deliberately applied through the control plane.
+
+**Recovering** A reset operation is in progress. This state is transitional — the environment is actively being modified to return to CONFORMANT
 
 ---
 
