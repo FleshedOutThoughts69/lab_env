@@ -1,0 +1,13 @@
+{
+  "id": "F-004",
+  "layer": "permissions",
+  "domain": ["linux", "os"],
+  "reset_tier": "R2",
+  "requires_confirmation": false,
+  "is_reversible": true,
+  "mutation": "sudo chmod 000 /var/lib/app/",
+  "symptom": "/health returns 200; / returns 500; app continues running",
+  "authoritative_signal": "app.log",
+  "observable": "curl localhost/health → 200; curl localhost/ → 500; tail -5 /var/log/app/app.log shows \"level\":\"error\",\"msg\":\"state write failed\"",
+  "reset_action": "sudo chmod 755 /var/lib/app/"
+}

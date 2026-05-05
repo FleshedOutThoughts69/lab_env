@@ -1,0 +1,32 @@
+{
+  "at": "2026-01-01T12:00:00Z",
+  "checks": [
+    {"id": "S-001", "assertion": "app.service is active",                      "passed": true,  "severity": "blocking"},
+    {"id": "S-002", "assertion": "app.service is enabled",                     "passed": true,  "severity": "blocking"},
+    {"id": "S-003", "assertion": "nginx is active",                            "passed": true,  "severity": "blocking"},
+    {"id": "S-004", "assertion": "nginx is enabled",                           "passed": true,  "severity": "blocking"},
+    {"id": "P-001", "assertion": "App process runs as appuser",                "passed": true,  "severity": "blocking"},
+    {"id": "P-002", "assertion": "App listens on 127.0.0.1:8080",             "passed": true,  "severity": "blocking"},
+    {"id": "P-003", "assertion": "nginx listens on 0.0.0.0:80",               "passed": true,  "severity": "blocking"},
+    {"id": "P-004", "assertion": "nginx listens on 0.0.0.0:443",              "passed": true,  "severity": "blocking"},
+    {"id": "E-001", "assertion": "GET /health returns HTTP 200",               "passed": true,  "severity": "blocking"},
+    {"id": "E-002", "assertion": "GET / returns HTTP 200",                     "passed": true,  "severity": "blocking"},
+    {"id": "E-003", "assertion": "/health body contains \"status\":\"ok\"",   "passed": true,  "severity": "blocking"},
+    {"id": "E-004", "assertion": "Response includes X-Proxy: nginx header",   "passed": true,  "severity": "blocking"},
+    {"id": "E-005", "assertion": "GET https://app.local/health returns 200 (skip verify)", "passed": true, "severity": "blocking"},
+    {"id": "F-001", "assertion": "/opt/app/server exists, owned appuser:appuser, mode 750",         "passed": true, "severity": "blocking"},
+    {"id": "F-002", "assertion": "/etc/app/config.yaml exists, owned appuser:appuser, mode 640",   "passed": true, "severity": "blocking"},
+    {"id": "F-003", "assertion": "/var/log/app/ exists, owned appuser:appuser, mode 755",          "passed": true, "severity": "blocking"},
+    {"id": "F-004", "assertion": "/var/lib/app/ exists, owned appuser:appuser, mode 755",          "passed": true, "severity": "blocking"},
+    {"id": "F-005", "assertion": "nginx configuration passes syntax check",   "passed": true,  "severity": "blocking"},
+    {"id": "F-006", "assertion": "TLS certificate exists and has not expired","passed": true,  "severity": "degraded"},
+    {"id": "F-007", "assertion": "app.local resolves to 127.0.0.1",           "passed": true,  "severity": "blocking"},
+    {"id": "L-001", "assertion": "/var/log/app/app.log exists and is non-empty", "passed": true, "severity": "degraded"},
+    {"id": "L-002", "assertion": "Last line of app.log is valid JSON",        "passed": true,  "severity": "degraded"},
+    {"id": "L-003", "assertion": "app.log contains a startup entry",          "passed": true,  "severity": "degraded"}
+  ],
+  "passed": 23,
+  "total": 23,
+  "classification": "CONFORMANT",
+  "failing_checks": null
+}

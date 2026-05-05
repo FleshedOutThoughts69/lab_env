@@ -1,0 +1,7 @@
+{
+  "fault_id": "F-004",
+  "applied": true,
+  "from_state": "CONFORMANT",
+  "to_state": "DEGRADED",
+  "forced": false
+}

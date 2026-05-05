@@ -1,0 +1,29 @@
+{
+  "state": "BROKEN",
+  "active_fault": null,
+  "services": {
+    "app.service": {
+      "active": false,
+      "pid": 0
+    },
+    "nginx": {
+      "active": true,
+      "pid": 0
+    }
+  },
+  "ports": [
+    {
+      "addr": "0.0.0.0:80",
+      "owner": "nginx"
+    },
+    {
+      "addr": "0.0.0.0:443",
+      "owner": "nginx (TLS)"
+    }
+  ],
+  "endpoints": {
+    "http://localhost/health": 502
+  },
+  "last_validate": null,
+  "last_reset": null
+}
