@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	cfg "lab_env/internal/config"
+	cfg "lab-env/lab/internal/config"
 )
 
 // Catalog returns the complete ordered check registry as defined in
@@ -16,6 +16,19 @@ import (
 // conformance model catalog. Check IDs, severities, and categories
 // are authoritative. Observable commands are included for documentation
 // and output; the Execute function is the actual test.
+
+// CheckByID returns the Check with the given ID from the catalog, or nil if
+// no check with that ID exists. Used by cmd/fault.go to evaluate
+// PreconditionChecks before executing Apply (control-plane-contract §4.5 step 5).
+func CheckByID(id string) *Check {
+	for _, c := range Catalog() {
+		if c.ID == id {
+			return c
+		}
+	}
+	return nil
+}
+
 func Catalog() []*Check {
 	return []*Check{
 		// ── S-series: System State Checks ───────────────────────────────

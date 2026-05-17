@@ -5,18 +5,21 @@ import (
 	"io/fs"
 	"strings"
 
-	cfg "lab_env/lab/internal/config"
-	"lab_env/lab/internal/executor"
-	"lab_env/lab/internal/state"
+	cfg "lab-env/lab/internal/config"
+	"lab-env/lab/internal/executor"
+	"lab-env/lab/internal/state"
 )
 
 // AllImpls returns the complete fault catalog as FaultImpl (with Apply/Recover).
 // Used by commands that need to execute faults: lab fault apply, lab reset.
+// The catalog contains 16 faults (F-001–F-010, F-013–F-018).
+// F-011 and F-012 are baseline network behaviours documented in fault-model.md §10
+// and are not faults — they are not in this catalog.
 func AllImpls() []*FaultImpl {
 	return []*FaultImpl{
 		faultF001(), faultF002(), faultF003(), faultF004(),
 		faultF005(), faultF006(), faultF007(), faultF008(),
-		faultF009(), faultF010(), faultF011(), faultF012(),
+		faultF009(), faultF010(),
 		faultF013(), faultF014(), faultF015(), faultF016(),
 		faultF017(), faultF018(),
 	}
@@ -100,6 +103,7 @@ func faultF001() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App cannot start because config is missing. Restart loop with connection refused.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -129,6 +133,7 @@ func faultF002() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App is running and healthy from its own perspective (reachable directly on 9090) but unreachable via nginx (which expects 8080).",
 			FailingChecks: []string{"P-002", "E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -172,6 +177,7 @@ func faultF003() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App cannot read config (permission denied). Same observable symptoms as F-001 but structural check F-002 mode bits distinguish the cause.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -205,6 +211,7 @@ func faultF004() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "/health returns 200 (service is alive); / returns 500 (state write fails). Health/ready split is the diagnostic signal.",
 			FailingChecks: []string{"E-002", "F-004"},
@@ -235,6 +242,7 @@ func faultF005() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "systemd cannot execute the binary (execute bit removed). Restart loop with exec failure.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005", "F-001"},
@@ -268,6 +276,7 @@ func faultF006() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App startup validation fails on the environment variable check. journald message explicitly identifies APP_ENV as missing.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -315,6 +324,7 @@ func faultF007() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App is healthy on 8080. nginx is misconfigured to upstream port 9090. Distinguishable from F-002 because P-002 passes (app on correct port).",
 			FailingChecks: []string{"E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -323,7 +333,7 @@ func faultF007() *FaultImpl {
 		Symptom:             "nginx returns 502; app is running correctly on 8080",
 		AuthoritativeSignal: "nginx error log + ss -ltnp",
 		Observable:          "ss -ltnp | grep 8080 shows app running correctly; curl -I localhost → 502; curl 127.0.0.1:8080/health → 200 (direct)",
-		MutationDisplay:     "Change server 127.0.0.1:8080 to server 127.0.0.1:9090 in /etc/nginx/sites-enabled/app; sudo nginx -s reload",
+		MutationDisplay:     "Change upstream app_backend server from 127.0.0.1:8080 to 127.0.0.1:9090 in /etc/nginx/sites-enabled/app; sudo nginx -s reload",
 		ResetAction:         "Restore canonical nginx config; sudo nginx -s reload",
 		},
 		Apply: func(exec executor.Executor) error {
@@ -331,7 +341,12 @@ func faultF007() *FaultImpl {
 			if err != nil {
 				return fmt.Errorf("reading nginx config: %w", err)
 			}
-			modified := replaceInBytes(data, "server "+cfg.AppBindAddr, "server 127.0.0.1:9090")
+			// The nginx.conf uses a named upstream block:
+			//   upstream app_backend { server 127.0.0.1:8080; }
+			// F-007 changes the upstream server address to 9090.
+			// This single replace breaks all proxy blocks that reference
+			// app_backend — both the HTTPS and localhost server blocks.
+			modified := replaceInBytes(data, "server "+cfg.AppBindAddr+";", "server 127.0.0.1:9090;")
 			if err := exec.WriteFile(cfg.NginxConfigPath, modified, cfg.ModeNginxConfig, cfg.RootUser, cfg.RootGroup); err != nil {
 				return err
 			}
@@ -356,6 +371,7 @@ func faultF008() *FaultImpl {
 		IsReversible:         false, // R3 reset required
 		ResetTier:            "R3",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App appears healthy to all endpoint checks during fault. The fault only manifests at shutdown — systemctl stop hangs 90 seconds.",
 			FailingChecks: []string{}, // no blocking checks fail while running
@@ -388,6 +404,7 @@ func faultF009() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App cannot open its log file at startup (mode 000). Startup fails before binding. Distinguishable from F-001/F-003 — config exists and is readable.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005", "L-001", "L-002", "L-003", "F-003"},
@@ -424,6 +441,7 @@ func faultF010() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R1",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{"P-001"}, // app process must be running — fault requires open inode held by live process
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App is alive and serving requests. Log file is unlinked (link count 0) but inode held open by the app process. New log entries are written to the unlinked inode and are not accessible on the filesystem.",
 			FailingChecks: []string{"L-001", "L-002", "L-003"},
@@ -445,69 +463,6 @@ func faultF010() *FaultImpl {
 	}
 }
 
-func faultF011() *FaultImpl {
-	return &FaultImpl{
-		Def: &FaultDef{
-		FaultDef: FaultDef{
-			ID:                   "F-011",
-			Layer:                "network",
-			Domain:               []string{"networking"},
-			RequiresConfirmation: false,
-			IsReversible:         false,
-			IsBaselineBehavior:   true,
-			ResetTier:            "",
-		Preconditions:        []state.State{state.StateConformant},
-		Postcondition: PostconditionSpec{
-			Behavioral:    "Baseline behavior: GET /slow via nginx returns 504 after ~3 seconds. Direct access to 127.0.0.1:8080/slow returns 200 after 5 seconds.",
-			FailingChecks: []string{}, // no conformance checks fail — this is baseline behavior
-			PassingChecks: []string{},
-		},
-		Symptom:             "/slow returns 504 after ~3s (nginx proxy_read_timeout 3s < /slow delay 5s)",
-		AuthoritativeSignal: "curl response code + timing",
-		Observable:          "time curl -v http://localhost/slow → 504 in ~3s with X-Proxy: nginx; time curl 127.0.0.1:8080/slow → 200 in ~5s",
-		MutationDisplay:     "No mutation — this is baseline nginx behavior (proxy_read_timeout 3s < /slow default delay 5s). Not applied via lab fault apply.",
-		ResetAction:         "N/A — baseline behavior",
-		},
-		Apply: func(_ executor.Executor) error {
-			return fmt.Errorf("F-011 is a baseline behavior entry and cannot be applied via lab fault apply")
-		},
-		Recover: func(_ executor.Executor) error {
-			return fmt.Errorf("F-011 is a baseline behavior entry and has no recover function")
-		},
-	}
-}
-
-func faultF012() *FaultImpl {
-	return &FaultImpl{
-		Def: &FaultDef{
-		ID:                   "F-012",
-		Layer:                "network",
-		Domain:               []string{"networking", "security"},
-		RequiresConfirmation: false,
-		IsReversible:         false,
-		IsBaselineBehavior:   true,
-		ResetTier:            "",
-		Preconditions:        []state.State{state.StateConformant},
-		Postcondition: PostconditionSpec{
-			Behavioral:    "Baseline behavior: TLS connection succeeds (handshake completes) but certificate verification fails without -k. The cert is present and valid; it lacks a trusted CA chain.",
-			FailingChecks: []string{}, // E-005 uses -k (skip verify) and passes
-			PassingChecks: []string{},
-		},
-		Symptom:             "curl https://app.local/health fails with TLS error (cert not in trust store)",
-		AuthoritativeSignal: "curl TLS error output",
-		Observable:          "curl -v https://app.local/health → SSL certificate problem: self-signed certificate; curl -sk https://app.local/health succeeds (skip verify)",
-		MutationDisplay:     "No mutation — the self-signed certificate is not in the system trust store at baseline. Not applied via lab fault apply.",
-		ResetAction:         "Trust installation (problem-specific): sudo cp /etc/nginx/tls/app.local.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates",
-		},
-		Apply: func(_ executor.Executor) error {
-			return fmt.Errorf("F-012 is a baseline behavior entry and cannot be applied via lab fault apply")
-		},
-		Recover: func(_ executor.Executor) error {
-			return fmt.Errorf("F-012 is a baseline behavior entry and has no recover function")
-		},
-	}
-}
-
 func faultF013() *FaultImpl {
 	return &FaultImpl{
 		Def: &FaultDef{
@@ -518,6 +473,7 @@ func faultF013() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "Service is enabled (desired state) but not active (runtime state). Demonstrates the critical distinction between systemd desired state and runtime state.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -562,6 +518,7 @@ func faultF014() *FaultImpl {
 		IsReversible:         false, // R3 reset required
 		ResetTier:            "R3",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App serves all endpoints correctly. Zombie accumulation is a resource leak (PID table slots) not an immediate behavioral failure. All endpoint checks pass.",
 			FailingChecks: []string{}, // no checks fail initially
@@ -592,6 +549,7 @@ func faultF015() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "Endpoints continue to work (old config persists). Only F-005 (nginx config syntax) fails. Demonstrates nginx's atomic reload: failed reload does not break existing service.",
 			FailingChecks: []string{"F-005"},
@@ -637,6 +595,7 @@ func faultF016() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "All nginx-proxied endpoints continue to work. App is additionally exposed directly on all interfaces. nginx proxying is not broken — it is bypassed as an option. P-002 check for 127.0.0.1:8080 fails (app is on 0.0.0.0:8080 instead).",
 			FailingChecks: []string{"P-002"},
@@ -678,6 +637,7 @@ func faultF017() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "Service does not start. journald error message distinguishes from F-006 — in F-006, the unit file lacks the directive; in F-017, the directive is present but overridden by the system-level environment.",
 			FailingChecks: []string{"S-001", "E-001", "E-002", "E-003", "E-004", "E-005"},
@@ -716,6 +676,7 @@ func faultF018() *FaultImpl {
 		IsReversible:         true,
 		ResetTier:            "R2",
 		Preconditions:        []state.State{state.StateConformant},
+		PreconditionChecks:   []string{},
 		Postcondition: PostconditionSpec{
 			Behavioral:    "App is running but / fails (cannot create the state file touch). /health continues to return 200. Demonstrates the inode/block distinction.",
 			FailingChecks: []string{"E-002", "F-004"},

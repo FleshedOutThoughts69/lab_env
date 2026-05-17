@@ -74,7 +74,7 @@ All blocking conformance checks pass. The environment matches the canonical spec
 **Valid transitions in:** `PROVISIONED` (first validation), `RECOVERING` (after successful reset)
 **Permitted operations:** all operations
 
-**Degraded-conformant sub-classification:** a CONFORMANT environment with one or more degraded-severity checks failing is classified as conformant with a degraded note. This sub-classification does not change permitted operations. See `conformance-model.md` §4.3.
+**Degraded-conformant sub-classification:** a CONFORMANT environment with one or more degraded-severity checks failing is classified as conformant with a degraded note. This sub-classification does not change permitted operations. See `conformance-model.md` §4.5.
 
 ### 2.4 DEGRADED
 
@@ -217,11 +217,16 @@ When the current state must be determined (e.g., on `lab status`), the following
 `lab status` determines current state using the following steps:
 
 ```
-1. Read state.json → recorded_state, active_fault
-2. Check: is app process running as appuser? (P-001 equivalent)
-3. Check: is app listening on 127.0.0.1:8080? (P-002 equivalent)
-4. Check: is nginx active? (S-003 equivalent)
-5. Check: does GET /health return 200? (E-001 equivalent)
+1. Read state.json → recorded_state, active_fault, classification_valid
+   (state.json schema: control-plane-contract.md §6.1)
+2. Check P-001: is app process running as appuser?
+   (lightweight equivalent — does not invoke the full conformance suite)
+3. Check P-002: is app listening on 127.0.0.1:8080?
+4. Check S-003: is nginx active?
+5. Check E-001: does GET /health return 200?
+
+If classification_valid is false (set by interrupt handler):
+  → Ignore recorded_state; re-derive entirely from steps 2-5
 
 If steps 2-5 all pass:
   If active_fault is non-null:
@@ -241,6 +246,8 @@ If state.json cannot be read or parsed:
   → Report state as UNKNOWN (classification failure, not a system state)
   → Prompt: run lab validate to establish state
 ```
+
+**Note on check IDs:** steps 2–5 name the canonical check IDs from `conformance-model.md` §3 for precision. The detection algorithm runs lightweight OS-level equivalents of those checks — a process table query, a port check, a service state query, and an HTTP probe — not the full conformance suite machinery. The check IDs identify what is being tested; they do not imply the full suite runs.
 
 ### 4.3 Conflict Resolution
 

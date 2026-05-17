@@ -1,0 +1,78 @@
+[Unit]
+Description=Lab environment subject application
+Documentation=https://github.com/lab-env/lab
+After=network.target
+Wants=network.target
+
+[Service]
+# ── Identity ─────────────────────────────────────────────────────────────────
+Type=simple
+User=appuser
+Group=appuser
+
+# ── Binary ───────────────────────────────────────────────────────────────────
+ExecStart=/opt/app/server
+WorkingDirectory=/var/lib/app
+
+# ── Environment ──────────────────────────────────────────────────────────────
+# app_env is the canonical runtime environment name.
+# Fault F-006 removes this line; F-017 overrides it via systemctl set-environment.
+Environment=APP_ENV=prod
+
+# Chaos injection interface (Application Runtime Contract §5).
+# This file is written by fault apply/recover operations.
+# An empty or missing file means no chaos is active.
+#
+# CRITICAL: this file must be mode 0644 owned by appuser:appuser (or at minimum
+# world-readable). The '-' prefix suppresses "file not found" errors but also
+# silently suppresses permission errors — if root creates this file with mode 0600,
+# the environment variables are silently ignored and chaos injection appears broken
+# with no visible error in the service logs or journald.
+EnvironmentFile=-/etc/app/chaos.env
+
+# ── Runtime limits ───────────────────────────────────────────────────────────
+# Placed in app.slice per Application Runtime Contract §4.1.
+# MemoryMax=256M and CPUQuota=20% are enforced at the slice level, not here.
+Slice=app.slice
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+# The service writes structured JSON to /var/log/app/app.log directly (opened
+# by the logging package with O_APPEND). stdout/stderr go to journald.
+# StandardOutput=journal captures the service's Stderr() calls (early startup
+# errors before the log file opens, and post-shutdown messages).
+# StandardError=journal captures Go runtime panics and OOM stack traces.
+# Both are queryable via: journalctl -u app.service
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=app
+
+# ── Lifecycle ────────────────────────────────────────────────────────────────
+# TimeoutStopSec must exceed ShutdownGrace in service/main.go (currently 5s).
+# 10s provides 5s headroom for telemetry flush, signal file cleanup, and
+# log file close. If shutdown consistently approaches 10s, increase to 15s
+# and investigate which step is slow.
+# If exceeded, systemd sends SIGKILL, leaving /run/app/ signal files dirty.
+TimeoutStopSec=10
+
+# Restart on unexpected exit (not on clean exit code 0).
+Restart=on-failure
+RestartSec=2
+
+# Limit restart attempts to prevent infinite loops during persistent faults.
+# F-001 (config missing), F-003 (config unreadable), F-005 (binary not executable)
+# all cause immediate startup failure. Without a limit, systemd will restart
+# indefinitely, hitting the built-in default rate limit (5 restarts in 10s)
+# which stops the unit entirely with start-limit-hit — making the lab
+# unresponsive. With this limit, the unit stops after 5 failures in 30s,
+# which is enough for the conformance suite to detect S-001 failure.
+StartLimitBurst=5
+StartLimitInterval=30s
+
+# ── Signal file directory ─────────────────────────────────────────────────────
+# /run/app is a tmpfs created by this unit and removed on stop.
+# The service writes PID, healthy, loading, status, and telemetry.json here.
+RuntimeDirectory=app
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

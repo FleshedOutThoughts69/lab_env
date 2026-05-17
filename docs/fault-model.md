@@ -97,8 +97,9 @@ Every fault in the catalog MUST define all of the following fields:
 | **IsReversible** | bool | `true` if `Recover` returns the system to pre-Apply state. `false` for binary rebuild faults. |
 | **ResetTier** | enum | `R1`, `R2`, or `R3` — the reset tier required to restore CONFORMANT |
 | **Preconditions** | []State | States the environment MUST be in for Apply to execute. Standard: `[CONFORMANT]`. |
-| **Apply** | func(Executor) error | The mutation function. MUST route all system operations through the Executor. |
-| **Recover** | func(Executor) error | The recovery function. MUST be idempotent. For non-reversible faults, MUST return an error directing the operator to R3 reset. |
+| **PreconditionChecks** | []string | Optional. Additional conformance check IDs (from `conformance-model.md` §3) that MUST pass immediately before Apply executes. Used when the standard state precondition is insufficient — for example, when the fault requires a specific process to be running. Checked after the state precondition. Empty for most faults. |
+| **Apply** | func(Executor) error | The mutation function. MUST route all system operations through the Executor. The catalog entry for each fault specifies the exact sequence of Executor calls. Returns nil on success; non-nil error if any step fails, in which case the state file MUST NOT be updated (§4.2). |
+| **Recover** | func(Executor) error | The recovery function. MUST be idempotent. The catalog entry for each fault specifies the exact sequence of Executor calls that undo Apply. For non-reversible faults, MUST return an error directing the operator to R3 reset and MUST NOT attempt any system mutation. The error message is implementation-defined; it MUST convey that R3 reset is required (see §4.4). |
 | **Postcondition** | PostconditionSpec | See §3.2 |
 | **Symptom** | string | Human-readable description of observable behavior after fault application |
 | **AuthoritativeSignal** | string | Which observability source (journald, app.log, ss, curl) is the primary evidence source |
@@ -120,12 +121,14 @@ A fault's postcondition defines the exact conformance state after the fault is a
 ```go
 type PostconditionSpec struct {
     Behavioral  string   // human description
-    FailingChecks []string // check IDs that fail after Apply
+    FailingChecks []string // check IDs that fail after Apply; empty slice for F-008 and F-014
     PassingChecks []string // notable checks that continue to pass
     // All checks not listed in either set are unaffected and continue
     // to pass unless they depend on a listed failing check
 }
 ```
+
+**Catalog presentation:** the catalog (§7.2) represents the `PostconditionSpec` as three separate labelled rows (`Behavioral postcondition`, `Failing checks`, `Invariant checks`) for human readability. These rows map directly to the struct fields above. Machine parsing must treat `Failing checks: []` as an empty `FailingChecks` slice, not a missing field. Descriptive text in the `Failing checks` row is a schema violation — the field MUST contain only check IDs or be empty.
 
 **The passing checks field is as important as the failing checks field.** It specifies which invariants the fault does NOT break — this is the diagnostic isolation property. For example, F-004 (state directory unwritable) fails E-002 (`/` returns 500) but E-001 (`/health` returns 200) continues to pass. The continued passing of E-001 is not incidental — it is the fault's primary diagnostic feature, demonstrating the health/ready split.
 
@@ -139,6 +142,14 @@ Every fault MUST satisfy the observability contract:
 3. Observable network behavior changes (visible in `curl`, `ss`, or `tcpdump`)
 
 **Faults that produce no observable signal are not valid faults** — they cannot be diagnosed and cannot be verified as active. Every fault in the catalog MUST have at least one `Observable` command that confirms the fault is active.
+
+**State-altering observation:** F-008 (SIGTERM ignored) is the single fault whose observable command changes the system state (`time sudo systemctl stop app` stops the service). State-altering observation is explicitly permitted for F-008 under the following conditions:
+
+1. The fault is otherwise unobservable by non-destructive means — no conformance check fails, no log entry differs, no network behavior changes while the service is running
+2. The observable command is the authoritative and expected diagnostic technique for this fault class (shutdown timing is how SIGTERM handling is verified in any production system)
+3. The operator is informed that the observation stops the service and must restart it afterward
+
+This does not open a general exception. All other faults MUST have non-destructive observable commands. F-008 is the specific exception and its status as such is documented here as the authoritative statement.
 
 ---
 
@@ -208,13 +219,14 @@ This precondition is checked by the control plane before calling `Apply`. If the
 
 ### 5.2 Fault-Specific Preconditions
 
-Some faults have additional preconditions beyond state. These are declared in the fault's `Preconditions` field and checked before `Apply` is called.
+Some faults have additional preconditions beyond state. These are declared in the fault's **`PreconditionChecks`** field (defined in §3.1) as a list of conformance check IDs that MUST pass immediately before `Apply` executes. This is distinct from the **`Preconditions`** field, which holds state values — `PreconditionChecks` holds check IDs from the conformance catalog that are run as live observations.
 
-Examples:
-- F-010 (log file deleted while running): requires the app process to be running (process check P-001 must pass)
-- F-018 (inode exhaustion): requires sufficient inode space to create 100,000 files (checked via `df -i`)
+`PreconditionChecks` is empty for most faults. It is used when the standard state precondition (CONFORMANT) is insufficient to guarantee the fault will behave correctly. For example:
 
-Fault-specific preconditions are checked after the state precondition. Both MUST pass for `Apply` to execute.
+- F-010 (log file deleted while running): `PreconditionChecks: [P-001]` — the app process must be running so that the deleted inode is held open. If the process is not running, the fault's teaching value is lost: no open file descriptor means the delete is simply a missing file, not a deleted-but-held inode.
+- F-018 (inode exhaustion): `PreconditionChecks: []` — the `df -i` check is not a formal precondition. The `Apply` function will fail naturally if inodes are already exhausted; no pre-check is required.
+
+Fault-specific `PreconditionChecks` are evaluated after the state precondition. Both MUST pass for `Apply` to execute.
 
 ### 5.3 Postcondition Specification
 
@@ -290,13 +302,15 @@ The reset tier is the fallback recovery path used by `lab reset`. It is independ
 
 The catalog is complete when:
 
-**Forward direction:** every fault maps to at least one conformance check ID in `FailingChecks`.
+**Forward direction:** every fault maps to at least one conformance check ID in `FailingChecks`, with two permitted exceptions: F-008 and F-014, which manifest only at shutdown or over time and have empty `FailingChecks` by design (documented in §3.3 and §4.4).
 
 **Reverse direction:** every conformance check in `conformance-model.md` §3 that has a non-empty `Maps to` field references at least one fault in this catalog.
 
-**Observability:** every fault has at least one `Observable` command that produces different output when the fault is active vs when the environment is conformant.
+**Observability:** every fault has at least one `Observable` command that produces distinguishable output when the fault is active vs conformant. For F-008, the observable command is state-altering (documented exception in §3.3).
 
-**Recovery:** every fault has a defined `ResetTier` and a `Recover` function (even if `Recover` returns an error directing to R3).
+**Apply/Recover:** every fault has a fully specified `Apply` and `Recover` step sequence in its catalog entry. For non-reversible faults (F-008, F-014), `Recover` is specified as returning an error directing to R3 reset.
+
+**Recovery:** every fault has a defined `ResetTier` (`R1`, `R2`, or `R3`). Baseline behaviors (§10 appendix) are not faults and do not have `ResetTier` values.
 
 ### 7.2 Catalog Entries
 
@@ -319,6 +333,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App cannot start because config is missing. Restart loop produces repeated journald entries. No endpoint is reachable. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | F-003 (log dir still exists), F-007 (DNS still resolves) |
+| **Apply** | `exec.Remove("/etc/app/config.yaml")` |
+| **Recover** | `exec.RestoreFile("/etc/app/config.yaml")` — restores from embedded canonical bytes with mode 0640, owner appuser:appuser |
 
 ---
 
@@ -339,6 +355,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App is running and healthy from its own perspective (reachable directly on 9090) but unreachable via nginx (which expects 8080). The health/proxy split is observable. |
 | **Failing checks** | P-002, E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | S-001 (app is active), P-001 (running as appuser), F-002 (config exists) |
+| **Apply** | 1. `exec.ReadFile("/etc/app/config.yaml")` → replace `127.0.0.1:8080` with `127.0.0.1:9090` → `exec.WriteFile("/etc/app/config.yaml", modified, 0640, "appuser", "appuser")`; 2. `exec.Systemctl("restart", "app.service")` |
+| **Recover** | `exec.RestoreFile("/etc/app/config.yaml")` → `exec.Systemctl("restart", "app.service")` |
 
 ---
 
@@ -359,6 +377,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App cannot read config (permission denied). Same observable symptoms as F-001 (restart loop, connection refused) but the structural check F-002 mode bits distinguish the cause. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | F-002 (config file exists — distinguishes from F-001), F-007 |
+| **Apply** | `exec.Chmod("/etc/app/config.yaml", 0000)` |
+| **Recover** | `exec.Chmod("/etc/app/config.yaml", 0640)` |
 
 ---
 
@@ -379,6 +399,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App is alive and config is loaded (health endpoint passes) but the state write on `/` fails (permission denied on `/var/lib/app/`). Demonstrates that `/health` and `/` have independent failure modes. |
 | **Failing checks** | E-002, F-004 (state dir mode) |
 | **Invariant checks** | S-001, E-001, E-003 — E-001 passing while E-002 fails is the primary diagnostic signal |
+| **Apply** | `exec.Chmod("/var/lib/app", 0000)` |
+| **Recover** | `exec.Chmod("/var/lib/app", 0755)` |
 
 ---
 
@@ -399,6 +421,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | systemd cannot execute the binary (execute bit removed). Restart loop with exec failure. Identical symptom to F-001 and F-003 at the endpoint level, but F-001 structural check distinguishes — binary exists with wrong mode. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005, F-001 (mode bits) |
 | **Invariant checks** | F-002 (config still exists and readable), F-007 |
+| **Apply** | `exec.Chmod("/opt/app/server", 0640)` |
+| **Recover** | `exec.Chmod("/opt/app/server", 0750)` |
 
 ---
 
@@ -419,6 +443,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App startup validation fails on the environment variable check, not the config file check. journald message explicitly identifies APP\_ENV as missing. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | F-002 (config exists and readable — distinguishes from F-001/F-003) |
+| **Apply** | 1. `exec.ReadFile("/etc/systemd/system/app.service")` → remove line containing `Environment=APP_ENV=prod` → `exec.WriteFile("/etc/systemd/system/app.service", modified, 0644, "root", "root")`; 2. `exec.Systemctl("daemon-reload", "")`; 3. `exec.Systemctl("restart", "app.service")` |
+| **Recover** | `exec.RestoreFile("/etc/systemd/system/app.service")` → `exec.Systemctl("daemon-reload", "")` → `exec.Systemctl("restart", "app.service")` |
 
 ---
 
@@ -439,6 +465,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App is healthy on its actual port. nginx is misconfigured to upstream the wrong port. Distinguishable from F-002 (wrong app port) because here the app is on 8080 but nginx expects 9090. |
 | **Failing checks** | E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | S-001, P-001, P-002 (app listening on 8080) — P-002 passing distinguishes from F-002 |
+| **Apply** | 1. `exec.ReadFile("/etc/nginx/sites-enabled/app")` → replace `server 127.0.0.1:8080;` with `server 127.0.0.1:9090;` inside the `upstream app_backend` block → `exec.WriteFile("/etc/nginx/sites-enabled/app", modified, 0644, "root", "root")`; 2. `exec.NginxReload()` |
+| **Recover** | `exec.RestoreFile("/etc/nginx/sites-enabled/app")` → `exec.NginxReload()` |
 
 ---
 
@@ -456,9 +484,11 @@ The catalog is complete when:
 | Symptom | `sudo systemctl stop app` hangs for 90 seconds before systemd sends SIGKILL. App is running correctly during this period. |
 | AuthoritativeSignal | `systemctl status app` showing stop-sigterm → stop-sigkill transition |
 | Observable | `time sudo systemctl stop app` takes ~90 seconds; `journalctl -u app.service` shows `Sent signal SIGTERM` followed by `Sent signal SIGKILL` 90 seconds later; app serves requests normally during the wait |
-| **Behavioral postcondition** | App appears healthy to all endpoint checks during the fault. The fault only manifests at shutdown. All conformance checks pass while the app is running. |
-| **Failing checks** | None while running — fault only manifests during shutdown sequence |
-| **Invariant checks** | All checks pass while app is running |
+| **Behavioral postcondition** | App appears healthy to all endpoint checks during the fault. The fault only manifests at shutdown — `sudo systemctl stop app` takes ~90 seconds because SIGTERM is ignored and systemd must wait for the KillTimeout before sending SIGKILL. All conformance checks pass while the app is running. The fault is silent to `lab validate`. |
+| **Failing checks** | [] |
+| **Invariant checks** | All 23 checks pass while app is running |
+| **Apply** | `exec.RunMutation("go", "build", "-ldflags", "-X main.FaultIgnoreSIGTERM=true", "-o", "/opt/app/server", "./service")` → `exec.Chown("/opt/app/server", "appuser", "appuser")` → `exec.Chmod("/opt/app/server", 0750)` → `exec.Systemctl("restart", "app.service")` |
+| **Recover** | Returns error: `"R3 reset required: run lab reset --tier R3 to rebuild the binary without the fault flag"`. MUST NOT attempt any system mutation. |
 
 ---
 
@@ -479,6 +509,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App cannot open its log file at startup (mode 000). Startup fails before binding. Distinguishable from F-001/F-003 via structural check — config exists and is readable. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005, L-001, L-002, L-003, F-003 (log file mode) |
 | **Invariant checks** | F-002 (config exists) |
+| **Apply** | `exec.Chmod("/var/log/app/app.log", 0000)` |
+| **Recover** | `exec.Chmod("/var/log/app/app.log", 0640)` |
 
 ---
 
@@ -491,7 +523,8 @@ The catalog is complete when:
 | RequiresConfirmation | false |
 | IsReversible | true |
 | ResetTier | R1 |
-| Preconditions | [CONFORMANT, app process running (P-001)] |
+| Preconditions | [CONFORMANT] |
+| PreconditionChecks | [P-001] — app process must be running; the fault's teaching value depends on the inode being held open by a live process |
 | MutationDisplay | `sudo rm /var/log/app/app.log` (while service is running) |
 | Symptom | Service continues running and serving requests. `app.log` does not exist on disk. Disk space held by the file is not freed until restart. New request logs are lost. |
 | AuthoritativeSignal | `lsof -p $(pgrep server)` |
@@ -499,48 +532,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | App is alive and serving requests. Log file is unlinked (link count 0) but the inode is held open by the app process. New log entries are written to the unlinked inode and are not accessible on the filesystem. |
 | **Failing checks** | L-001, L-002, L-003 |
 | **Invariant checks** | S-001, P-001, P-002, E-001, E-002 — app continues serving normally |
-
----
-
-**F-011 — nginx proxy timeout shorter than app processing (baseline behavior)**
-
-| Field | Value |
-|---|---|
-| Layer | `network` |
-| Domain | `networking` |
-| RequiresConfirmation | false |
-| IsReversible | false (not a mutation — baseline behavior) |
-| ResetTier | N/A |
-| Preconditions | [CONFORMANT] |
-| MutationDisplay | No mutation. This is baseline nginx behavior: `proxy_read_timeout 3s` < `/slow` default delay of 5s. |
-| Symptom | `GET /slow` via nginx returns 504 after approximately 3 seconds. Direct access to `127.0.0.1:8080/slow` returns 200 after 5 seconds. |
-| AuthoritativeSignal | curl response code + timing |
-| Observable | `time curl -v http://localhost/slow` → 504 in ~3s with `X-Proxy: nginx`; `time curl 127.0.0.1:8080/slow` → 200 in ~5s |
-| **Behavioral postcondition** | No conformance checks fail — this is intended baseline behavior. The timeout demonstrates the proxy timeout layer. |
-| **Failing checks** | None (this is intended behavior, not a fault) |
-| **Invariant checks** | All checks pass |
-| **Note** | This entry exists in the catalog for reference by networking problems. It is not applied via `lab fault apply` — it is observable from the baseline CONFORMANT state. |
-
----
-
-**F-012 — TLS certificate not in trust store (baseline behavior)**
-
-| Field | Value |
-|---|---|
-| Layer | `network` |
-| Domain | `networking`, `security` |
-| RequiresConfirmation | false |
-| IsReversible | false (not a mutation — baseline behavior) |
-| ResetTier | N/A |
-| Preconditions | [CONFORMANT] |
-| MutationDisplay | No mutation. The self-signed certificate is not in the system trust store at baseline. |
-| Symptom | `curl https://app.local/health` fails with TLS verification error. `curl -k https://app.local/health` succeeds. |
-| AuthoritativeSignal | curl TLS error output |
-| Observable | `curl -v https://app.local/health` → `SSL certificate problem: self-signed certificate`; `openssl s_client -connect app.local:443` shows self-signed cert |
-| **Behavioral postcondition** | TLS connection succeeds (handshake completes) but certificate verification fails without `-k`. The cert is present and valid; it simply lacks a trusted CA chain. |
-| **Failing checks** | None — E-005 uses `-k` (skip verify) and passes; this is an intended baseline condition |
-| **Invariant checks** | E-005 passes (skip verify), F-006 passes (cert valid) |
-| **Note** | Trust installation is a problem-specific action: `sudo cp /etc/nginx/tls/app.local.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates` |
+| **Apply** | `exec.Remove("/var/log/app/app.log")` — must be called while the service is running (enforced by PreconditionChecks: [P-001]) so the inode is held open |
+| **Recover** | `exec.Systemctl("restart", "app.service")` — restarting causes the service to re-open the log file, recreating the inode. R1 tier sufficient. |
 
 ---
 
@@ -561,6 +554,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | Service is enabled (desired state) but not active (runtime state). Demonstrates the critical distinction between systemd desired state and runtime state. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | S-002 (enabled) — the enabled/failed asymmetry is the fault's diagnostic property |
+| **Apply** | 1. `exec.ReadFile("/etc/systemd/system/app.service")` → replace `ExecStart=/opt/app/server` with `ExecStart=/opt/app/DOESNOTEXIST` → `exec.WriteFile("/etc/systemd/system/app.service", modified, 0644, "root", "root")`; 2. `exec.Systemctl("daemon-reload", "")` |
+| **Recover** | `exec.RestoreFile("/etc/systemd/system/app.service")` → `exec.Systemctl("daemon-reload", "")` → `exec.Systemctl("restart", "app.service")` |
 
 ---
 
@@ -578,9 +573,11 @@ The catalog is complete when:
 | Symptom | `ps aux` shows growing count of Z-state processes parented to the app. App continues serving requests. |
 | AuthoritativeSignal | `ps -eo pid,ppid,stat,comm \| grep Z` |
 | Observable | Zombie count increases with each `/` request; `pstree -p $(pgrep server)` shows zombie children; `ps aux \| grep -c ' Z '` grows over time |
-| **Behavioral postcondition** | App serves all endpoints correctly. Zombie accumulation is a resource leak (PID table slots) not an immediate behavioral failure. All endpoint checks pass. |
-| **Failing checks** | None initially — zombies accumulate gradually; P-001 will eventually fail if PID table exhausts |
-| **Invariant checks** | All conformance checks pass while PID table is not exhausted |
+| **Behavioral postcondition** | App serves all endpoints correctly. Zombie accumulation is a resource leak (PID table slots) that grows with each `/` request. The fault is silent to `lab validate` until PID table exhaustion — at which point P-001 will fail, but this condition is not expected to be reached during normal lab exercises. |
+| **Failing checks** | [] |
+| **Invariant checks** | All 23 checks pass while PID table is not exhausted |
+| **Apply** | `exec.RunMutation("go", "build", "-ldflags", "-X main.FaultZombieChildren=true", "-o", "/opt/app/server", "./service")` → `exec.Chown("/opt/app/server", "appuser", "appuser")` → `exec.Chmod("/opt/app/server", 0750)` → `exec.Systemctl("restart", "app.service")` |
+| **Recover** | Returns error: `"R3 reset required: run lab reset --tier R3 to rebuild the binary without the fault flag"`. MUST NOT attempt any system mutation. |
 
 ---
 
@@ -601,6 +598,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | Endpoints continue to work (old config persists). Only the filesystem check F-005 (nginx config validity) fails. Demonstrates nginx's atomic reload: failed reload does not break existing service. |
 | **Failing checks** | F-005 (nginx config syntax) |
 | **Invariant checks** | S-003, P-003, P-004, E-001, E-002 — all continue working with old config |
+| **Apply** | 1. `exec.ReadFile("/etc/nginx/sites-enabled/app")` → append `\ninvalid_directive on;` → `exec.WriteFile("/etc/nginx/sites-enabled/app", modified, 0644, "root", "root")`; 2. attempt `exec.NginxReload()` — this will fail (expected; fault is in the config, not the reload attempt) |
+| **Recover** | `exec.RestoreFile("/etc/nginx/sites-enabled/app")` → `exec.NginxReload()` |
 
 ---
 
@@ -621,6 +620,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | All nginx-proxied endpoints continue to work. App is additionally exposed directly on all interfaces. nginx proxying is not broken — it is bypassed as an option. P-002 check for `127.0.0.1:8080` fails (app is on `0.0.0.0:8080` instead). |
 | **Failing checks** | P-002 (listening on wrong address) |
 | **Invariant checks** | S-001, E-001, E-002, E-003, E-004 (nginx still proxying) |
+| **Apply** | 1. `exec.ReadFile("/etc/app/config.yaml")` → replace `127.0.0.1:8080` with `0.0.0.0:8080` → `exec.WriteFile("/etc/app/config.yaml", modified, 0640, "appuser", "appuser")`; 2. `exec.Systemctl("restart", "app.service")` |
+| **Recover** | `exec.RestoreFile("/etc/app/config.yaml")` → `exec.Systemctl("restart", "app.service")` |
 
 ---
 
@@ -641,6 +642,8 @@ The catalog is complete when:
 | **Behavioral postcondition** | Service does not start. journald error message is the distinguishing signal from F-006 — in F-006, the unit file lacks the directive; in F-017, the directive is present but overridden. |
 | **Failing checks** | S-001, E-001, E-002, E-003, E-004, E-005 |
 | **Invariant checks** | F-002 (config exists), F-001 (binary exists) |
+| **Apply** | 1. `exec.RunMutation("systemctl", "set-environment", "APP_ENV=")` — sets APP_ENV to empty string at the systemd manager level, overriding the unit file value; 2. `exec.Systemctl("restart", "app.service")` |
+| **Recover** | 1. `exec.RunMutation("systemctl", "unset-environment", "APP_ENV")` — removes the manager-level override, restoring the unit file value; 2. `exec.Systemctl("restart", "app.service")` |
 
 ---
 
@@ -654,13 +657,15 @@ The catalog is complete when:
 | IsReversible | true |
 | ResetTier | R2 |
 | Preconditions | [CONFORMANT] |
-| MutationDisplay | `for i in $(seq 1 100000); do sudo touch /var/lib/app/file_$i; done` |
+| PreconditionChecks | [] — no additional check preconditions; Apply fails naturally if inodes are already exhausted |
 | Symptom | Filesystem reports inode exhaustion. New files cannot be created despite available data blocks. `df -h` shows available space; `df -i` shows 100% inode usage. |
 | AuthoritativeSignal | `df -i` |
 | Observable | `df -i /var/lib/app` shows inode usage near 100%; `touch /var/lib/app/test` → "No space left on device" despite `df -h` showing available blocks; app `/` endpoint returns 500 (cannot write state file) |
 | **Behavioral postcondition** | App is running but `/` fails (cannot create the state file touch). `/health` continues to return 200. Demonstrates the inode/block distinction: "disk full" can mean block exhaustion or inode exhaustion, and `df -h` vs `df -i` is the diagnostic that distinguishes them. |
 | **Failing checks** | E-002 (/ returns 500), F-004 (state dir write fails) |
 | **Invariant checks** | S-001, E-001, E-003 — app is alive and config is loaded |
+| **Apply** | `exec.RunMutation("bash", "-c", "for i in $(seq 1 100000); do touch /var/lib/app/file_$i; done")` |
+| **Recover** | `exec.RunMutation("bash", "-c", "rm -f /var/lib/app/file_*")` — removes all fault-created files; idempotent (no error if files already absent) |
 
 ---
 
@@ -668,13 +673,17 @@ The catalog is complete when:
 
 The fault model is complete when:
 
-**Forward direction:** every fault in the catalog maps to at least one conformance check ID in `FailingChecks` (with the exception of F-008 and F-014, which manifest only at shutdown or over time, and F-011/F-012 which are baseline behaviors).
+**Forward direction:** every fault in the catalog maps to at least one conformance check ID in `FailingChecks`. Permitted exceptions: F-008 and F-014 (empty `FailingChecks` by design — see §7.1). Baseline behaviors in §10 are not faults and are not subject to this condition.
 
 **Reverse direction:** every conformance check in `conformance-model.md` §3 that references a fault ID in its `Maps to` field has a corresponding entry in this catalog.
 
 **Observability:** every fault has at least one `Observable` command that produces distinguishable output when the fault is active.
 
-**Recovery:** every fault has a defined `ResetTier`. No fault leaves the environment in an unrecoverable state.
+**Apply/Recover specification:** every fault catalog entry has complete `Apply` and `Recover` step sequences. Non-reversible faults have `Recover` returning an error directing to R3. No fault leaves the environment in an unrecoverable state.
+
+**ResetTier validity:** every fault's `ResetTier` is one of `R1`, `R2`, `R3`. No other values are permitted.
+
+---
 
 ---
 
@@ -689,3 +698,37 @@ The fault model is complete when:
 **Relationship to `canonical-environment.md`:** the fault catalog in `canonical-environment.md` §7 MUST remain consistent with this document. This document is authoritative on fault semantics; `canonical-environment.md` is authoritative on environment-specific instantiation details (exact file paths, Ubuntu-specific commands). When the two differ on semantic meaning, this document wins. When they differ on path details, `canonical-environment.md` wins.
 
 **Version consistency:** this document's version MUST match `conformance-model.md` and `system-state-model.md`. The three documents form a coherent versioned set.
+
+---
+
+## §10 — Appendix: Baseline Network Behaviours
+
+These entries document observable properties of the canonical conformant environment that are intentional design decisions, not faults. They cannot be applied via `lab fault apply` because they are not mutations — they are always present. They are documented here because they are used as teaching scenarios in networking problem sets and are referenced from conformance check `Maps to` fields.
+
+**Baseline entries are not faults.** They do not meet the fault definition (§2.1): they introduce no failure cause, do not transition the state to `DEGRADED`, and have no `Apply` or `Recover` functions. The `ResetTier` concept does not apply.
+
+---
+
+**B-001 — nginx proxy timeout shorter than app processing time**
+
+| Field | Value |
+|---|---|
+| Layer | `network` |
+| Domain | `networking` |
+| Observable | `time curl -v http://localhost/slow` → 504 in ~3s; `time curl 127.0.0.1:8080/slow` → 200 in ~5s |
+| Conformance impact | No checks fail. `lab validate` exits 0. This is intended baseline behavior. |
+| Teaching scenario | Demonstrates that proxy timeouts are independent of app response time. nginx `proxy_read_timeout 3s` in `canonical-environment.md` is the canonical value. |
+| Note | Previously cataloged as F-011. Removed from fault catalog because it violates the fault definition (§2.1): no mutation, no failure cause, no DEGRADED state. |
+
+---
+
+**B-002 — TLS certificate not in system trust store**
+
+| Field | Value |
+|---|---|
+| Layer | `network` |
+| Domain | `networking`, `security` |
+| Observable | `curl -v https://app.local/health` → `SSL certificate problem: self-signed certificate`; `curl -sk https://app.local/health` → 200 |
+| Conformance impact | No checks fail. E-005 uses `-k` (skip verify) and passes. F-006 (cert valid) passes. This is an intended baseline condition. |
+| Teaching scenario | Demonstrates the distinction between TLS handshake success and certificate verification. Trust installation: `sudo cp /etc/nginx/tls/app.local.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates` |
+| Note | Previously cataloged as F-012. Removed from fault catalog for the same reason as B-001. |

@@ -370,8 +370,11 @@ Each command contract uses the following structure:
 1. Fault ID exists in the embedded catalog. Failure: `ErrUnknownFaultID` (exit 2).
 2. Current state is CONFORMANT (unless `--force`). Failure: `ErrPreconditionNotMet` (exit 3).
 3. No fault is currently active (unless `--force`). Failure: `ErrFaultAlreadyActive` (exit 3).
-4. Fault-specific preconditions from the fault catalog entry. Failure: `ErrFaultPreconditionFailed` (exit 3).
-5. If `RequiresConfirmation: true` and `--yes` not provided: display `MutationDisplay` and prompt for confirmation. User decline: exit 0 with message "Aborted by user."
+4. Fault `Preconditions []State` satisfied: current state matches one of the fault's declared required states (standard: `[CONFORMANT]`). Bypassed by `--force`. Failure: `ErrFaultPreconditionFailed` (exit 3).
+5. Fault `PreconditionChecks []string` satisfied: each listed conformance check ID passes when run as a live observation. Bypassed by `--force`. Failure: `ErrFaultPreconditionFailed` (exit 3) with the failing check ID in the error message.
+6. If `RequiresConfirmation: true` and `--yes` not provided: display `MutationDisplay` and prompt for confirmation. User decline: exit 0 with message "Aborted by user."
+
+**`--force` scope:** `--force` bypasses preconditions 2, 3, 4, and 5. It does not bypass precondition 1 (the fault must exist) or precondition 6 (confirmation for destructive faults). When `--force` bypasses a `PreconditionChecks` guard, the fault may not produce its intended observable behaviour — for example, applying F-010 with `--force` when the app process is stopped will delete the log file but will not produce an open inode. This is permitted; the operator accepts responsibility via the `--force` flag.
 
 **Execution contract:**
 
@@ -582,7 +585,7 @@ An executor operation failure is non-retrying. If an operation fails, the execut
 
 ## 5.5 Privilege Model
 
-The executor performs privileged operations via `sudo`. The calling process runs as `devuser`; the existing `devuser` sudoers rule covers all required operations. The executor MUST NOT store credentials, MUST NOT cache sudo authentication tokens beyond the natural sudo cache lifetime, and MUST NOT elevate privilege for operations that do not require it.
+The executor performs privileged operations via `sudo`. The calling process runs as the operator user defined in `canonical-environment.md` §2.2; the existing sudoers rule for that user covers all required operations. The executor MUST NOT store credentials, MUST NOT cache sudo authentication tokens beyond the natural sudo cache lifetime, and MUST NOT elevate privilege for operations that do not require it.
 
 ---
 
@@ -608,6 +611,10 @@ The state file at `/var/lib/lab/state.json` conforms to the following schema. Al
     "total": "<integer>",
     "failing_checks": ["<string — check ID>"]
   },
+  // last_validate is a summary subset of the full validation output defined in
+  // conformance-model.md §4.7. The full output (verdict, per-check results with
+  // severity and dependent flags) is produced on stdout and in the audit log.
+  // state.json persists only at, passed, total, and failing_checks.
   "last_reset": {
     "at": "<string — RFC3339 timestamp>",
     "tier": "<string — R1, R2, or R3>",
@@ -673,7 +680,7 @@ If `state.json` is missing or cannot be parsed:
 
 The audit log is at `/var/lib/lab/audit.log`. It is append-only and MUST NOT be truncated or rotated by any `lab` operation, including R3 reset and `lab provision`. The audit log persists across all reset tiers, including full reprovision.
 
-Ownership: `root:root`, mode `644` — readable by `devuser` without sudo.
+Ownership: `root:root`, mode `644` — readable by the operator user (defined in `canonical-environment.md` §2.2) without sudo.
 
 ## 7.2 Entry Schema
 
@@ -743,8 +750,9 @@ This section documents which behaviors in this contract are derived from each se
 ## 9.1 Conformance Model Derivation
 
 **Derived behaviors:**
-- §4.2 (validate): the check execution sequence follows `conformance-model.md` §4.2 (check ordering and dependencies)
-- §4.2 (validate): the blocking vs degraded severity distinction (§4.3 of validate) derives from `conformance-model.md` §3.1 (check severity field)
+- §4.2 (validate): the check execution sequence follows `conformance-model.md` §4.4 (check ordering and dependencies)
+- §4.2 (validate): the blocking vs degraded severity distinction (§4.3 of validate) derives from `conformance-model.md` §3.1 (check severity field) and verdict rules in §4.1
+- §4.2 (validate): degraded-conformant classification derives from `conformance-model.md` §4.5 (partial conformance)
 - §4.6 (reset): post-reset validation follows the same semantics as `conformance-model.md` §4 (validation semantics)
 
 **Violation conditions:** this contract violates the conformance model derivation if it specifies validation behavior that contradicts `conformance-model.md` §4 (e.g., if this document allowed early abort on first failing check while the conformance model requires full suite execution).
@@ -774,4 +782,3 @@ This section documents which behaviors in this contract are derived from each se
 *End of Contract.*
 *Contract version: 1.0.0*
 *This document introduces no system semantics. All semantic authority resides in the three model documents.*
-

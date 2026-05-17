@@ -1,0 +1,20 @@
+# /etc/app/config.yaml
+# Canonical application configuration.
+# Owner: appuser:appuser  Mode: 0640
+#
+# This file is the R2 reset restore target.
+# Fault F-002 changes server.addr to 127.0.0.1:9090 — P-002 check then fails.
+# Fault F-016 changes server.addr to 0.0.0.0:8080 — P-002 check then fails.
+# KnownFields strict parsing is enforced: unknown keys cause startup failure.
+
+server:
+  # addr is the TCP address the service binds to.
+  # Canonical value: 127.0.0.1:8080 (loopback only — nginx proxies externally).
+  # Must match internal/config/config.go AppBindAddr.
+  addr: 127.0.0.1:8080
+
+# app_env is the runtime environment name.
+# Embedded in GET / response body: {"status":"ok","env":"<app_env>"}.
+# Control characters and newlines are stripped by the service at startup.
+# Canonical value: prod.
+app_env: prod

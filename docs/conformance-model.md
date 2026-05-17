@@ -77,6 +77,10 @@ The following rules govern how conformance layers interact:
 
 **Rule C-4:** No check in any layer exists without a named failure meaning. A check that can fail without a defined interpretation violates model completeness (see §5).
 
+**Rule C-5 — Verdict aggregation across layers:** the overall validation verdict is derived by applying the severity rules (§4.1, Rules V-1 through V-3) across all checks from all layers simultaneously. Layers are not aggregated independently. A single blocking check failure from any layer — behavioral, structural, or operational — produces a NON-CONFORMANT verdict. The layer distinction affects diagnosis and authority, not verdict arithmetic.
+
+**Rule C-4 clarified:** Rule C-4's requirement that every check has a named failure meaning is a completeness condition for the catalog, not a runtime aggregation rule. It ensures that every check result can be interpreted — that no check can fail silently without a defined semantic meaning. It does not alter the verdict; it prevents catalog entries that would produce uninterpretable failures.
+
 ---
 
 ## §3 — Check Catalog
@@ -90,7 +94,7 @@ Every check in the catalog conforms to this schema:
 | **ID** | string | Unique identifier in format `{CATEGORY}-{NNN}` |
 | **Category** | enum | `S` (system state), `P` (process), `E` (endpoint), `F` (filesystem), `L` (log) |
 | **Layer** | enum | `behavioral`, `structural`, `operational` |
-| **Severity** | enum | `blocking` (failure → non-conformant), `degraded` (failure → degraded-conformant) |
+| **Severity** | enum | `blocking` (failure contributes NON-CONFORMANT per Rule V-3) or `degraded` (failure contributes DEGRADED-CONFORMANT per Rule V-2). The authoritative mapping from severity to verdict is §4.1. |
 | **Assertion** | string | The condition that must be true for the check to pass |
 | **Failure meaning** | string | What a failing check means semantically — not the error message, the interpretation |
 | **Observable command** | string | The exact command that tests the assertion |
@@ -100,7 +104,22 @@ The `Maps to` field enforces the bidirectional completeness condition (§5): eve
 
 **Namespace note:** check IDs and fault IDs share the `F-NNN` prefix for the filesystem check series (F-001 through F-007) and the fault catalog (F-001 through F-018). These are distinct namespaces. In `Maps to` fields, identifiers of the form `F-NNN` always refer to **fault catalog entries** from `fault-model.md` §7, never to check IDs. Check IDs are always referenced by their full category-prefixed form (S-NNN, P-NNN, E-NNN, F-NNN, L-NNN) within check-to-check cross-references, which do not appear in this catalog.
 
-### 3.2 System State Checks (S-series)
+### 3.2 Cross-Reference Definitions
+
+The `Maps to` field in the check schema references states and faults defined in downstream model documents. These terms are used in the catalog before those documents define them fully. To make this document self-contained, the following forward definitions apply:
+
+**States** (defined authoritatively in `system-state-model.md`):
+- **CONFORMANT** — the recorded state when all blocking checks pass (and optionally degraded checks pass). The baseline state from which fault injection begins.
+- **DEGRADED** — the recorded state when a fault is active and its postcondition checks are failing as expected.
+- **BROKEN** — the recorded state when one or more blocking checks fail and no active fault explains the failure. A check that maps to `BROKEN` in its `Maps to` field is asserting: "if this check fails without an active fault that explains it, the system is in an unplanned broken state."
+- **RECOVERING** — the recorded state during a reset operation. Transient; not directly produced by check results.
+- **UNPROVISIONED** / **PROVISIONED** — pre-operational states. No checks map to these.
+
+**Fault IDs** (defined authoritatively in `fault-model.md` §7): `F-001` through `F-018` in the `Maps to` field identify specific faults whose application is evidenced by a failing check. A check listing fault `F-NNN` in its `Maps to` field means: "if this check fails, fault F-NNN may be active, or the fault's mutation may have been applied without going through `lab fault apply`."
+
+**Namespace disambiguation:** as noted in §3.1, check IDs in the filesystem series (F-001 through F-007) and fault IDs (F-001 through F-018) share the `F-NNN` prefix. In `Maps to` fields, all `F-NNN` identifiers refer to **faults**, never checks. This is the only location where fault IDs and check IDs could be confused; all other cross-references use the full context to disambiguate.
+
+### 3.3 System State Checks (S-series)
 
 These checks verify that systemd service units are in the expected lifecycle state. They are structural checks with behavioral implications — a service that is not active cannot serve requests.
 
@@ -111,7 +130,7 @@ These checks verify that systemd service units are in the expected lifecycle sta
 | **S-003** | structural | blocking | `nginx` is active | Proxy is not running; no traffic reaches app | `systemctl is-active nginx --quiet` | BROKEN, F-015 |
 | **S-004** | structural | blocking | `nginx` is enabled | nginx will not start on reboot | `systemctl is-enabled nginx --quiet` | BROKEN |
 
-### 3.3 Process Checks (P-series)
+### 3.4 Process Checks (P-series)
 
 These checks verify that processes are running with the correct identity and are bound to the expected network addresses.
 
@@ -122,7 +141,7 @@ These checks verify that processes are running with the correct identity and are
 | **P-003** | behavioral | blocking | nginx listens on `0.0.0.0:80` | No HTTP traffic can reach the system | `ss -ltnp \| grep -q '0.0.0.0:80'` | BROKEN, F-015 |
 | **P-004** | behavioral | blocking | nginx listens on `0.0.0.0:443` | No HTTPS traffic can reach the system | `ss -ltnp \| grep -q '0.0.0.0:443'` | BROKEN, F-015 |
 
-### 3.4 Endpoint Checks (E-series)
+### 3.5 Endpoint Checks (E-series)
 
 These checks verify the behavioral contract of the HTTP interface. They are the primary behavioral authority.
 
@@ -134,7 +153,7 @@ These checks verify the behavioral contract of the HTTP interface. They are the 
 | **E-004** | behavioral | blocking | Response includes `X-Proxy: nginx` header | nginx is not proxying — traffic reaching app directly or response from wrong source | `curl -sI http://localhost/ \| grep -q 'X-Proxy: nginx'` | BROKEN, F-007 |
 | **E-005** | behavioral | blocking | `GET https://app.local/health` returns 200 (skip verify) | TLS listener or upstream not functioning | `curl -skf https://app.local/health > /dev/null` | BROKEN, F-015 |
 
-### 3.5 Filesystem Checks (F-series)
+### 3.6 Filesystem Checks (F-series)
 
 These checks verify structural conformance — canonical ownership, modes, and content validity.
 
@@ -145,10 +164,10 @@ These checks verify structural conformance — canonical ownership, modes, and c
 | **F-003** | structural | blocking | `/var/log/app/` exists, owned `appuser:appuser`, mode `755` | Log directory missing or wrong permissions | `stat -c '%U:%G %a' /var/log/app \| grep -q 'appuser:appuser 755'` | BROKEN, F-009 |
 | **F-004** | structural | blocking | `/var/lib/app/` exists, owned `appuser:appuser`, mode `755` | State directory missing or wrong permissions — `/` will return 500 | `stat -c '%U:%G %a' /var/lib/app \| grep -q 'appuser:appuser 755'` | BROKEN, F-004, F-018 |
 | **F-005** | structural | blocking | nginx configuration passes syntax check | nginx config has syntax error; nginx will not reload | `nginx -t 2>/dev/null` | BROKEN, F-015 |
-| **F-006** | structural | degraded | TLS certificate exists and has not expired | HTTPS will fail; certificate requires renewal | `openssl x509 -checkend 0 -noout -in /etc/nginx/tls/app.local.crt` | BROKEN, F-012 |
+| **F-006** | structural | degraded | TLS certificate exists and has not expired | HTTPS will fail; certificate requires renewal | `openssl x509 -checkend 0 -noout -in /etc/nginx/tls/app.local.crt` | BROKEN |
 | **F-007** | structural | blocking | `app.local` resolves to `127.0.0.1` | TLS hostname resolution broken; HTTPS problems will be misattributed | `getent hosts app.local \| grep -q '127.0.0.1'` | BROKEN |
 
-### 3.6 Log Checks (L-series)
+### 3.7 Log Checks (L-series)
 
 These checks verify that the application's log output is present and structured correctly.
 
@@ -162,13 +181,45 @@ These checks verify that the application's log output is present and structured 
 
 ## §4 — Validation Semantics
 
-### 4.1 Point-in-Time Snapshot Model
+### 4.1 Verdict Derivation Rules
+
+A validation run produces exactly one of three verdicts. The derivation is deterministic and depends only on the pass/fail state of individual checks.
+
+**Rule V-1 — CONFORMANT:** the verdict is CONFORMANT when every check in the catalog passes (exit code 0 for its observable command). Both blocking and degraded checks must pass. This is the baseline required for fault injection.
+
+**Rule V-2 — DEGRADED-CONFORMANT:** the verdict is DEGRADED-CONFORMANT when all blocking checks pass and at least one degraded-severity check fails. The system is semantically correct (behavioral conformance holds) but operationally drifted. Current degraded-severity checks: F-006, L-001, L-002, L-003.
+
+**Rule V-3 — NON-CONFORMANT:** the verdict is NON-CONFORMANT when any blocking check fails, regardless of the state of degraded checks.
+
+**Summary table:**
+
+| Blocking checks | Degraded checks | Verdict |
+|---|---|---|
+| All pass | All pass | CONFORMANT |
+| All pass | One or more fail | DEGRADED-CONFORMANT |
+| One or more fail | Any | NON-CONFORMANT |
+
+**Rule V-4 — Severity determines verdict contribution:** a check's severity field is the sole determinant of its contribution to the verdict. A blocking check failure always produces NON-CONFORMANT regardless of layer or category. A degraded check failure never produces NON-CONFORMANT. These rules are fixed; no other document may alter a check's verdict contribution without updating its severity field in this catalog.
+
+### 4.2 Observable Command Pass/Fail Semantics
+
+Every check in the catalog has an observable command field. The pass/fail determination is defined by the command's exit code:
+
+**Exit code 0 → check passes.** The assertion is satisfied. The check contributes a pass result to the verdict.
+
+**Any non-zero exit code → check fails.** The assertion is not satisfied. The check contributes a fail result to the verdict, and the failure meaning field defines how to interpret the failure.
+
+This mapping is universal and admits no exceptions. No check may use a non-standard exit code convention. Observable commands must be written such that exit 0 precisely and only occurs when the assertion holds.
+
+**Implication for observable command authorship:** a command like `grep pattern file` exits 0 if the pattern is found and 1 if not — this mapping is correct for an assertion of the form "file contains pattern." A command that exits 0 even when the condition is absent produces a check that never fails and violates Rule C-4 (every check must have a named failure meaning that can be reached).
+
+### 4.3 Point-in-Time Snapshot Model
 
 Validation is a point-in-time snapshot, not continuous monitoring. Running `lab validate` produces a result that reflects the system state at the moment the checks execute. The result does not remain valid after the snapshot — system state can change between validations.
 
 **Implication:** conformance is not a persistent property. It is a property of a moment. The state file records the last known conformance result; it does not guarantee current conformance.
 
-### 4.2 Check Ordering and Dependencies
+### 4.4 Check Ordering and Dependencies
 
 Checks within a category are independent unless explicitly noted. Checks across categories have implied dependencies:
 
@@ -178,15 +229,15 @@ Checks within a category are independent unless explicitly noted. Checks across 
 
 **Implication for diagnosis:** when multiple checks fail, examine the highest-authority failures first. An E-series failure with an S-series failure is most likely caused by the service state, not an independent endpoint problem.
 
-### 4.3 Partial Conformance — Degraded-Conformant
+### 4.5 Partial Conformance — Degraded-Conformant
 
-A system is **degraded-conformant** when all blocking checks pass and one or more degraded-severity checks fail. The system is classified as operationally degraded but semantically correct.
+A system is **degraded-conformant** when all blocking checks pass and one or more degraded-severity checks fail. The system is classified as operationally degraded but semantically correct. This is derived from Rule V-2 (§4.1).
 
 Degraded-conformant environments MAY be used for fault injection. The degraded condition MUST be noted in the validation output. Degraded-conformant is recorded in the state file as `"conformance": "degraded"` within a `CONFORMANT` state.
 
 Current degraded-severity checks: F-006, L-001, L-002, L-003.
 
-### 4.4 What a Passing Suite Proves and Does Not Prove
+### 4.6 What a Passing Suite Proves and Does Not Prove
 
 **A passing conformance suite proves:**
 - All specified invariants hold at the moment of validation
@@ -200,6 +251,27 @@ Current degraded-severity checks: F-006, L-001, L-002, L-003.
 
 The check catalog is a finite approximation of correctness, not a proof of correctness.
 
+### 4.7 Validation Output Schema
+
+Every validation run MUST produce a structured output record. This document defines the minimum required fields; `control-plane-contract.md` defines the full serialized format and field names. The following fields are mandatory — a validation output missing any of them is incomplete:
+
+| Field | Type | Description |
+|---|---|---|
+| **verdict** | enum | One of: `CONFORMANT`, `DEGRADED-CONFORMANT`, `NON-CONFORMANT`. Derived per Rules V-1 through V-3 (§4.1). |
+| **at** | RFC3339 timestamp | The moment the validation snapshot was taken. All check results reflect this moment. |
+| **checks** | array | One result record per check in the catalog. Exactly 23 entries. Order follows catalog order (S → P → E → F → L). |
+| **checks[].id** | string | Check ID (e.g., `S-001`). |
+| **checks[].passed** | bool | `true` if the observable command exited 0; `false` otherwise. |
+| **checks[].severity** | enum | `blocking` or `degraded`. Copied from the check schema; not recomputed. |
+| **checks[].dependent** | bool | `true` if this check failed as a consequence of a higher-authority check failure, not independently. Omitted when `false`. |
+| **passed** | int | Count of checks with `passed: true`. |
+| **total** | int | Total check count. Always 23 in this version. |
+| **failing_checks** | []string | IDs of checks with `passed: false` and `dependent: false`. Null when empty. Dependent failures are excluded. |
+
+The validation output MUST NOT update the `state` field in the state file. It MUST update `last_validate`. Only `lab status` is authorized to reconcile the authoritative state classification.
+
+**Relationship to `state.json`:** the full validation output defined above is produced on stdout (in JSON mode) and in the audit log. The `state.json` file stores only a summary subset in the `last_validate` field: `at`, `passed`, `total`, and `failing_checks`. The per-check `checks[]` array and the overall `verdict` field are not persisted in `state.json` — they are available on stdout and in the audit log only. The `state.json` summary schema is defined in `control-plane-contract.md` §6.1.
+
 ---
 
 ## §5 — Model Completeness Condition
@@ -210,7 +282,7 @@ The conformance model is complete when the following bidirectional condition hol
 
 **Exceptions to the forward direction (derived from `fault-model.md` §8):**
 - **F-008** (SIGTERM ignored) and **F-014** (zombie accumulation): these faults manifest only at shutdown or over time — no blocking conformance check fails while the app is running normally. They are verified by their `Observable` commands, not by the conformance suite.
-- **F-011** (nginx proxy timeout) and **F-012** (TLS certificate not in trust store): these are documented baseline behaviors, not mutations. They are not applied via `lab fault apply` and are therefore not expected to appear in check `Maps to` fields.
+- **B-001** (nginx proxy timeout) and **B-002** (TLS certificate not in trust store): these are baseline network behaviours documented in `fault-model.md §10`. They are not faults and are not in the fault catalog; they are therefore not expected to appear in check `Maps to` fields.
 
 **Reverse direction:** every check in this catalog maps to at least one state, transition, or fault in `system-state-model.md` or `fault-model.md` (via the `Maps to` field).
 

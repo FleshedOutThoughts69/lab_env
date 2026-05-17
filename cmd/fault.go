@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"lab_env/internal/catalog"
-	"lab_env/internal/conformance"
-	"lab_env/internal/executor"
-	"lab_env/internal/output"
-	"lab_env/internal/state"
+	"lab-env/lab/internal/catalog"
+	"lab-env/lab/internal/conformance"
+	"lab-env/lab/internal/executor"
+	"lab-env/lab/internal/output"
+	"lab-env/lab/internal/state"
 )
 
 // ── lab fault list ────────────────────────────────────────────────────────────
@@ -102,14 +102,6 @@ func (c *FaultApplyCmd) Run(id string, force, yes bool) output.CommandResult {
 		}
 	}
 
-	// Baseline behavior faults cannot be applied.
-	if fault.Def.IsBaselineBehavior {
-		return output.CommandResult{
-			ExitCode: 2,
-			Err:      fmt.Errorf("%s is a baseline behavior entry and cannot be applied via lab fault apply", id),
-		}
-	}
-
 	// Acquire mutation lock.
 	if err := c.lock.Acquire(); err != nil {
 		if c.audit != nil {
@@ -150,7 +142,55 @@ func (c *FaultApplyCmd) Run(id string, force, yes bool) output.CommandResult {
 		return output.CommandResult{ExitCode: 3, Err: fmt.Errorf("%s", msg)}
 	}
 
-	// Precondition 4: RequiresConfirmation prompt.
+	// Precondition 4: Preconditions []State satisfied (unless --force).
+	// Standard check: state matches one of the fault's declared required states.
+	// For most faults this is redundant with precondition 2 (both require CONFORMANT),
+	// but is preserved for faults that may declare additional states in future.
+	if !force {
+		precondMet := false
+		for _, p := range fault.Def.Preconditions {
+			if p == sf.State {
+				precondMet = true
+				break
+			}
+		}
+		if !precondMet {
+			if c.audit != nil {
+				c.audit.LogError("ErrFaultPreconditionFailed", "state precondition not met")
+			}
+			return output.CommandResult{
+				ExitCode: 3,
+				Err:      fmt.Errorf("ErrFaultPreconditionFailed: state precondition not satisfied for fault %s", id),
+			}
+		}
+	}
+
+	// Precondition 5: PreconditionChecks []string satisfied (unless --force).
+	// Each listed check ID is run as a live observation via the Observer.
+	// Bypassed by --force (operator accepts responsibility for degraded behaviour).
+	if !force && len(fault.Def.PreconditionChecks) > 0 {
+		for _, checkID := range fault.Def.PreconditionChecks {
+			check := conformance.CheckByID(checkID)
+			if check == nil {
+				// Catalog integrity violation — unknown check ID in PreconditionChecks.
+				return output.CommandResult{
+					ExitCode: 2,
+					Err:      fmt.Errorf("internal error: fault %s declares unknown PreconditionCheck %q", id, checkID),
+				}
+			}
+			if err := check.Execute(c.obs); err != nil {
+				if c.audit != nil {
+					c.audit.LogError("ErrFaultPreconditionFailed", checkID)
+				}
+				return output.CommandResult{
+					ExitCode: 3,
+					Err:      fmt.Errorf("ErrFaultPreconditionFailed: check %s must pass before applying fault %s\n\nEnsure the prerequisite condition is met, or use --force to bypass (not recommended)", checkID, id),
+				}
+			}
+		}
+	}
+
+	// Precondition 6: RequiresConfirmation prompt. Not bypassed by --force.
 	if fault.Def.RequiresConfirmation && !yes {
 		return output.CommandResult{
 			Value: output.FaultApplyResult{

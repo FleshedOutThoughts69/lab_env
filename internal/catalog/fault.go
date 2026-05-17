@@ -12,8 +12,8 @@
 package catalog
 
 import (
-	"lab_env/lab/internal/executor"
-	"lab_env/lab/internal/state"
+	"lab-env/lab/internal/executor"
+	"lab-env/lab/internal/state"
 )
 
 // FaultDef is the static, serializable definition of a fault.
@@ -29,11 +29,21 @@ type FaultDef struct {
 	// Execution model metadata
 	RequiresConfirmation bool   `json:"requires_confirmation"`
 	IsReversible         bool   `json:"is_reversible"`
-	IsBaselineBehavior   bool   `json:"is_baseline_behavior"`
-	ResetTier            string `json:"reset_tier"` // empty for baseline behaviors
+	ResetTier            string `json:"reset_tier"` // R1, R2, or R3
 
 	// Preconditions
+	// Preconditions is the list of states the environment must be in before
+	// Apply may execute. Standard value: [CONFORMANT].
+	// Defined in fault-model.md §5.1.
 	Preconditions []state.State `json:"preconditions"`
+
+	// PreconditionChecks is a list of conformance check IDs that must pass
+	// (as live observations via the Observer) immediately before Apply executes.
+	// Used when the standard state precondition is insufficient — for example,
+	// when the fault's teaching value requires a specific process to be running.
+	// Empty for most faults. Evaluated after Preconditions.
+	// Defined in fault-model.md §5.2.
+	PreconditionChecks []string `json:"precondition_checks"`
 
 	// Postcondition
 	Postcondition PostconditionSpec `json:"postcondition"`

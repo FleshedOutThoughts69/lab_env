@@ -150,30 +150,30 @@ L-001, L-002, L-003
 
 ## IV. Frozen Fault Catalog
 
-**Count:** 18 faults. F-011 and F-012 are baseline behaviors (not applyable).
+**Count:** 16 faults. F-011 and F-012 are baseline network behaviours (fault-model.md §10) and are not in the fault catalog.
 
-| ID | Reversible | Reset tier | Baseline | Requires confirmation |
-|---|---|---|---|---|
-| F-001 | ✓ | R2 | no | no |
-| F-002 | ✓ | R2 | no | no |
-| F-003 | ✓ | R2 | no | no |
-| F-004 | ✓ | R2 | no | no |
-| F-005 | ✓ | R2 | no | no |
-| F-006 | ✓ | R2 | no | no |
-| F-007 | ✓ | R2 | no | no |
-| F-008 | ✗ | R3 | no | **yes** |
-| F-009 | ✓ | R2 | no | no |
-| F-010 | ✓ | R1 | no | no |
-| F-011 | — | — | **yes** | — |
-| F-012 | — | — | **yes** | — |
-| F-013 | ✓ | R2 | no | no |
-| F-014 | ✗ | R3 | no | **yes** |
-| F-015 | ✓ | R2 | no | no |
-| F-016 | ✓ | R2 | no | no |
-| F-017 | ✓ | R2 | no | no |
-| F-018 | ✓ | R2 | no | no |
+| ID | Reversible | Reset tier | Requires confirmation |
+|---|---|---|---|
+| F-001 | ✓ | R2 | no |
+| F-002 | ✓ | R2 | no |
+| F-003 | ✓ | R2 | no |
+| F-004 | ✓ | R2 | no |
+| F-005 | ✓ | R2 | no |
+| F-006 | ✓ | R2 | no |
+| F-007 | ✓ | R2 | no |
+| F-008 | ✗ | R3 | **yes** |
+| F-009 | ✓ | R2 | no |
+| F-010 | ✓ | R1 | no |
+| F-013 | ✓ | R2 | no |
+| F-014 | ✗ | R3 | **yes** |
+| F-015 | ✓ | R2 | no |
+| F-016 | ✓ | R2 | no |
+| F-017 | ✓ | R2 | no |
+| F-018 | ✓ | R2 | no |
 
 **Not frozen:** symptom prose, observable prose, mutation display prose.
+
+**Note:** F-011 and F-012 previously appeared in this table as baseline entries. They have been reclassified as baseline network behaviours and removed from the fault catalog. See fault-model.md §10 (Appendix: Baseline Network Behaviours).
 
 ---
 

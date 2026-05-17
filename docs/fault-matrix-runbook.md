@@ -19,8 +19,8 @@
 | **F-008** | `lab fault apply F-008 --yes` | rebuild binary FAULT_IGNORE_SIGTERM=true | **None while running** | All pass | DEGRADED | **R3** | All 23 pass |
 | **F-009** | `lab fault apply F-009` | chmod 000 `/var/log/app/app.log` | S-001, E-001, E-002, E-003, E-004, E-005 | F-002 | DEGRADED | R2 | All 23 pass |
 | **F-010** | `lab fault apply F-010` | rm `/var/log/app/app.log` (while running) | _(degraded only)_ L-001, L-002, L-003 | **S-001, P-001, P-002, E-001, E-002** | DEGRADED | R1 | All 23 pass |
-| **F-011** | _not applyable_ | baseline behavior | None | — | — | — | — |
-| **F-012** | _not applyable_ | baseline behavior | None | — | — | — | — |
+| **B-001** | _not a fault — observe only_ | baseline network behaviour | None | — | — | — | — |
+| **B-002** | _not a fault — observe only_ | baseline network behaviour | None | — | — | — | — |
 | **F-013** | `lab fault apply F-013` | `ExecStart=DOESNOTEXIST` in unit; daemon-reload | S-001, E-001, E-002, E-003, E-004, E-005 | **S-002** | DEGRADED | R2 | All 23 pass |
 | **F-014** | `lab fault apply F-014 --yes` | rebuild binary FAULT_ZOMBIE_CHILDREN=true | **None initially** | All pass | DEGRADED | **R3** | All 23 pass |
 | **F-015** | `lab fault apply F-015` | append `invalid_directive on;` to nginx config | **F-005 only** | S-003, P-003, P-004, E-001, E-002 | DEGRADED | R2 | All 23 pass |
@@ -101,13 +101,13 @@ lsof +L1 | grep app.log            # deleted fd held by app
 curl localhost/health               # 200
 ```
 
-**F-011 (baseline)**
+**B-001 (baseline network behaviour)**
 ```bash
 time curl -v http://localhost/slow  # 504 ~3s
 time curl 127.0.0.1:8080/slow      # 200 ~5s
 ```
 
-**F-012 (baseline)**
+**B-002 (baseline network behaviour)**
 ```bash
 curl -v https://app.local/health    # SSL certificate error
 curl -sk https://app.local/health   # 200

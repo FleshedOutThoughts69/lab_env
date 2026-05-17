@@ -1,4 +1,4 @@
-package invariants 
+package invariants_test
 
 // invariants_test.go enforces cross-document invariants that span multiple
 // packages. These tests make architectural rules explicit and catch
@@ -9,9 +9,9 @@ package invariants
 import (
 	"testing"
 
-	"lab_env/internal/catalog"
-	"lab_env/internal/conformance"
-	"lab_env/internal/state"
+	"lab-env/lab/internal/catalog"
+	"lab-env/lab/internal/conformance"
+	"lab-env/lab/internal/state"
 )
 
 // ── fault-model.md × conformance-model.md ────────────────────────────────────
@@ -42,7 +42,7 @@ func TestInvariant_FaultFailingChecks_ExistInCatalog(t *testing.T) {
 
 // TestInvariant_DegradedChecks_AreNonBlocking enforces that the four degraded
 // checks (F-006, L-001, L-002, L-003) are all SeverityDegraded.
-// conformance-model.md §3.1 and §4.3.
+// conformance-model.md §3.1 and §4.5.
 func TestInvariant_DegradedChecks_AreNonBlocking(t *testing.T) {
 	degradedExpected := map[string]bool{
 		"F-006": true, "L-001": true, "L-002": true, "L-003": true,
@@ -56,16 +56,13 @@ func TestInvariant_DegradedChecks_AreNonBlocking(t *testing.T) {
 	}
 }
 
-// TestInvariant_BaselineFaults_NotApplyable enforces that baseline behavior
-// faults (F-011, F-012) are marked IsBaselineBehavior and have no ResetTier.
-// fault-model.md §7, G-002 explicit field.
-func TestInvariant_BaselineFaults_NotApplyable(t *testing.T) {
+// TestInvariant_NoBaselineFaultsInCatalog enforces that F-011 and F-012
+// (reclassified as baseline network behaviours in fault-model.md §10)
+// are absent from the fault catalog.
+func TestInvariant_NoBaselineFaultsInCatalog(t *testing.T) {
 	for _, f := range catalog.AllDefs() {
-		if !f.IsBaselineBehavior {
-			continue
-		}
-		if f.ResetTier != "" {
-			t.Errorf("baseline fault %s must have empty ResetTier, got %q", f.ID, f.ResetTier)
+		if f.ID == "F-011" || f.ID == "F-012" {
+			t.Errorf("fault %s must not be in the catalog — it is a baseline network behaviour (fault-model.md §10)", f.ID)
 		}
 	}
 }
@@ -75,9 +72,6 @@ func TestInvariant_BaselineFaults_NotApplyable(t *testing.T) {
 // fault-model.md §6.3.
 func TestInvariant_NonReversible_RequiresR3(t *testing.T) {
 	for _, f := range catalog.AllDefs() {
-		if f.IsBaselineBehavior {
-			continue
-		}
 		if !f.IsReversible && f.ResetTier != "R3" {
 			t.Errorf("non-reversible fault %s must have ResetTier R3, got %q", f.ID, f.ResetTier)
 		}
@@ -89,9 +83,6 @@ func TestInvariant_NonReversible_RequiresR3(t *testing.T) {
 // fault-model.md §4.4.
 func TestInvariant_NonReversible_RequiresConfirmation(t *testing.T) {
 	for _, f := range catalog.AllDefs() {
-		if f.IsBaselineBehavior {
-			continue
-		}
 		if !f.IsReversible && !f.RequiresConfirmation {
 			t.Errorf("non-reversible fault %s must require confirmation", f.ID)
 		}
@@ -99,13 +90,9 @@ func TestInvariant_NonReversible_RequiresConfirmation(t *testing.T) {
 }
 
 // TestInvariant_AllFaults_HaveConformantPrecondition enforces the standard
-// precondition from fault-model.md §5.1: every non-baseline fault requires
-// CONFORMANT state.
+// precondition from fault-model.md §5.1: every fault requires CONFORMANT state.
 func TestInvariant_AllFaults_HaveConformantPrecondition(t *testing.T) {
 	for _, f := range catalog.AllDefs() {
-		if f.IsBaselineBehavior {
-			continue
-		}
 		found := false
 		for _, p := range f.Preconditions {
 			if p == state.StateConformant {
@@ -117,6 +104,39 @@ func TestInvariant_AllFaults_HaveConformantPrecondition(t *testing.T) {
 			t.Errorf("fault %s must have CONFORMANT in Preconditions (fault-model §5.1)", f.ID)
 		}
 	}
+}
+
+// TestInvariant_PreconditionChecks_AreValidCheckIDs enforces that every check ID
+// declared in a fault's PreconditionChecks field exists in the conformance catalog.
+// An unknown check ID would cause cmd/fault.go to return an internal error at
+// runtime rather than a clean precondition failure.
+// fault-model.md §5.2; control-plane-contract.md §4.5 step 5.
+func TestInvariant_PreconditionChecks_AreValidCheckIDs(t *testing.T) {
+	for _, f := range catalog.AllDefs() {
+		for _, checkID := range f.PreconditionChecks {
+			if conformance.CheckByID(checkID) == nil {
+				t.Errorf("fault %s declares PreconditionCheck %q which does not exist in the conformance catalog (fault-model §5.2)", f.ID, checkID)
+			}
+		}
+	}
+}
+
+// TestInvariant_F010_HasPreconditionCheck_P001 enforces that F-010 specifically
+// declares P-001 in its PreconditionChecks. The fault's teaching value depends
+// on the app process holding the deleted inode open; applying it to a stopped
+// service produces incorrect observable behaviour.
+// fault-model.md §5.2.
+func TestInvariant_F010_HasPreconditionCheck_P001(t *testing.T) {
+	f := catalog.DefByID("F-010")
+	if f == nil {
+		t.Fatal("F-010 not found in catalog")
+	}
+	for _, checkID := range f.PreconditionChecks {
+		if checkID == "P-001" {
+			return
+		}
+	}
+	t.Error("F-010 must have P-001 in PreconditionChecks (fault-model §5.2)")
 }
 
 // ── system-state-model.md × conformance-model.md ─────────────────────────────
@@ -170,11 +190,12 @@ func TestInvariant_Conformant_ForbidsActiveFault(t *testing.T) {
 
 // ── fault-model.md × catalog count ───────────────────────────────────────────
 
-// TestInvariant_18FaultsInCatalog enforces the catalog count from
-// fault-model.md §7.2.
-func TestInvariant_18FaultsInCatalog(t *testing.T) {
-	if got := len(catalog.AllDefs()); got != 18 {
-		t.Errorf("fault catalog has %d faults, want 18 (fault-model §7.2)", got)
+// TestInvariant_16FaultsInCatalog enforces the catalog count from
+// fault-model.md §7.2. F-011 and F-012 are baseline network behaviours
+// (fault-model.md §10) and are not in the fault catalog.
+func TestInvariant_16FaultsInCatalog(t *testing.T) {
+	if got := len(catalog.AllDefs()); got != 16 {
+		t.Errorf("fault catalog has %d faults, want 16 (fault-model §7.2)", got)
 	}
 }
 
@@ -186,13 +207,13 @@ func TestInvariant_23ChecksInConformanceCatalog(t *testing.T) {
 	}
 }
 
-// TestInvariant_ResetTierValues enforces that all faults use only R1, R2,
-// R3, or empty (baseline) for ResetTier.
+// TestInvariant_ResetTierValues enforces that all faults use only R1, R2, or R3.
+// Empty ResetTier is no longer valid — baseline behaviours are not in the catalog.
 func TestInvariant_ResetTierValues(t *testing.T) {
-	valid := map[string]bool{"R1": true, "R2": true, "R3": true, "": true}
+	valid := map[string]bool{"R1": true, "R2": true, "R3": true}
 	for _, f := range catalog.AllDefs() {
 		if !valid[f.ResetTier] {
-			t.Errorf("fault %s has invalid ResetTier %q, must be R1, R2, R3, or empty", f.ID, f.ResetTier)
+			t.Errorf("fault %s has invalid ResetTier %q, must be R1, R2, or R3", f.ID, f.ResetTier)
 		}
 	}
 }

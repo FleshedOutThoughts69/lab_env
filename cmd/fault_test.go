@@ -17,12 +17,12 @@ import (
 	"testing"
 	"time"
 
-
-	"lab_env/internal/catalog"
-	"lab_env/internal/conformance"
-	"lab_env/internal/executor"
-	"lab_env/internal/output"
-	"lab_env/internal/state"
+	. "lab-env/lab/cmd"
+	"lab-env/lab/internal/catalog"
+	"lab-env/lab/internal/conformance"
+	"lab-env/lab/internal/executor"
+	"lab-env/lab/internal/output"
+	"lab-env/lab/internal/state"
 )
 
 // ── stub executor ─────────────────────────────────────────────────────────────
@@ -117,8 +117,10 @@ func TestFaultApplyCmd_UnknownID_RejectsBeforeLock(t *testing.T) {
 	}
 }
 
-func TestFaultApplyCmd_BaselineFault_Rejected(t *testing.T) {
-	// F-011 is a baseline behavior — must be rejected before lock
+func TestFaultApplyCmd_BaselineID_Rejected(t *testing.T) {
+	// F-011 and F-012 are no longer in the fault catalog (fault-model.md §10).
+	// Attempting to apply them produces ErrUnknownFaultID (exit 2),
+	// not a special baseline-rejection error.
 	dir := t.TempDir()
 	store := state.NewStoreAt(filepath.Join(dir, "state.json"))
 	store.Write(state.Fresh(state.StateConformant))
@@ -127,13 +129,15 @@ func TestFaultApplyCmd_BaselineFault_Rejected(t *testing.T) {
 	audit := executor.NewAuditLoggerAt(filepath.Join(dir, "audit.log"), "lab fault apply F-011")
 	cmd := NewFaultApplyCmd(healthyObs(), conformance.NewRunner(), exec, store, audit)
 
-	result := cmd.Run("F-011", false, false)
+	for _, id := range []string{"F-011", "F-012"} {
+		result := cmd.Run(id, false, false)
 
-	if result.ExitCode != 2 {
-		t.Errorf("ExitCode = %d for baseline fault, want 2", result.ExitCode)
-	}
-	if len(exec.mutationCalls) > 0 {
-		t.Errorf("no mutations for baseline fault, got: %v", exec.mutationCalls)
+		if result.ExitCode != 2 {
+			t.Errorf("ExitCode = %d for %s (not in catalog), want 2 (ErrUnknownFaultID)", result.ExitCode, id)
+		}
+		if len(exec.mutationCalls) > 0 {
+			t.Errorf("no mutations for unknown fault ID %s, got: %v", id, exec.mutationCalls)
+		}
 	}
 }
 

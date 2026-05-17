@@ -1,4 +1,4 @@
-package catalog
+package catalog_test
 
 // catalog_test.go validates the fault catalog against the completeness
 // conditions from fault-model.md §8 and the FaultDef/FaultImpl split
@@ -7,23 +7,24 @@ package catalog
 import (
 	"testing"
 
-	"lab_env/internal/conformance"
-	"lab_env/internal/state"
+	"lab-env/lab/internal/conformance"
+	. "lab-env/lab/internal/catalog"
+	"lab-env/lab/internal/state"
 )
 
 // ── Catalog completeness ──────────────────────────────────────────────────────
 
-func TestAllImpls_Has18Faults(t *testing.T) {
+func TestAllImpls_Has16Faults(t *testing.T) {
 	faults := AllImpls()
-	if len(faults) != 18 {
-		t.Errorf("AllImpls() has %d faults, want 18", len(faults))
+	if len(faults) != 16 {
+		t.Errorf("AllImpls() has %d faults, want 16", len(faults))
 	}
 }
 
-func TestAllDefs_Has18Defs(t *testing.T) {
+func TestAllDefs_Has16Defs(t *testing.T) {
 	defs := AllDefs()
-	if len(defs) != 18 {
-		t.Errorf("AllDefs() has %d defs, want 18", len(defs))
+	if len(defs) != 16 {
+		t.Errorf("AllDefs() has %d defs, want 16", len(defs))
 	}
 }
 
@@ -37,16 +38,36 @@ func TestFaultIDs_AreUnique(t *testing.T) {
 	}
 }
 
-func TestFaultIDs_SequentialF001ToF018(t *testing.T) {
+func TestFaultIDs_SequentialWithGap(t *testing.T) {
+	// F-011 and F-012 are baseline network behaviours documented in
+	// fault-model.md §10. They are not faults and are not in this catalog.
+	// The catalog jumps from F-010 to F-013.
 	faults := AllImpls()
+	expected := []string{
+		"F-001", "F-002", "F-003", "F-004", "F-005", "F-006",
+		"F-007", "F-008", "F-009", "F-010",
+		"F-013", "F-014", "F-015", "F-016", "F-017", "F-018",
+	}
+	if len(faults) != len(expected) {
+		t.Fatalf("AllImpls() has %d faults, want %d", len(faults), len(expected))
+	}
 	for i, f := range faults {
-		expected := []string{
-			"F-001", "F-002", "F-003", "F-004", "F-005", "F-006",
-			"F-007", "F-008", "F-009", "F-010", "F-011", "F-012",
-			"F-013", "F-014", "F-015", "F-016", "F-017", "F-018",
-		}[i]
-		if f.Def.ID != expected {
-			t.Errorf("fault[%d].ID = %q, want %q", i, f.Def.ID, expected)
+		if f.Def.ID != expected[i] {
+			t.Errorf("fault[%d].ID = %q, want %q", i, f.Def.ID, expected[i])
+		}
+	}
+}
+
+func TestFaultIDs_F011AndF012_NotInCatalog(t *testing.T) {
+	// F-011 and F-012 were reclassified as baseline network behaviours
+	// (fault-model.md §10) and removed from the fault catalog.
+	// ImplByID must return nil for both.
+	for _, id := range []string{"F-011", "F-012"} {
+		if ImplByID(id) != nil {
+			t.Errorf("ImplByID(%s) should return nil — not a fault", id)
+		}
+		if DefByID(id) != nil {
+			t.Errorf("DefByID(%s) should return nil — not a fault", id)
 		}
 	}
 }
@@ -103,11 +124,8 @@ func TestAllFaults_HavePreconditions(t *testing.T) {
 }
 
 func TestNonBaseline_StandardPrecondition(t *testing.T) {
-	// All non-baseline faults must require CONFORMANT as a precondition
+	// All faults must require CONFORMANT as a precondition
 	for _, f := range AllDefs() {
-		if f.IsBaselineBehavior {
-			continue
-		}
 		hasConformant := false
 		for _, p := range f.Preconditions {
 			if p == state.StateConformant {
@@ -116,53 +134,7 @@ func TestNonBaseline_StandardPrecondition(t *testing.T) {
 			}
 		}
 		if !hasConformant {
-			t.Errorf("fault %s is not a baseline behavior but does not require CONFORMANT precondition", f.ID)
-		}
-	}
-}
-
-// ── Baseline behavior faults ──────────────────────────────────────────────────
-
-func TestBaselineFaults_AreF011AndF012(t *testing.T) {
-	// Only F-011 and F-012 should be marked as baseline behaviors
-	baselineIDs := map[string]bool{}
-	for _, f := range AllDefs() {
-		if f.IsBaselineBehavior {
-			baselineIDs[f.ID] = true
-		}
-	}
-
-	if !baselineIDs["F-011"] {
-		t.Error("F-011 should be marked IsBaselineBehavior")
-	}
-	if !baselineIDs["F-012"] {
-		t.Error("F-012 should be marked IsBaselineBehavior")
-	}
-	if len(baselineIDs) != 2 {
-		t.Errorf("expected exactly 2 baseline faults, got: %v", baselineIDs)
-	}
-}
-
-func TestBaselineFaults_HaveEmptyResetTier(t *testing.T) {
-	for _, f := range AllDefs() {
-		if f.IsBaselineBehavior && f.ResetTier != "" {
-			t.Errorf("baseline fault %s should have empty ResetTier, got %q", f.ID, f.ResetTier)
-		}
-	}
-}
-
-func TestBaselineFaults_ApplyReturnsError(t *testing.T) {
-	// Applying a baseline fault should always return an error
-	for _, f := range AllImpls() {
-		if !f.Def.IsBaselineBehavior {
-			continue
-		}
-		// Apply must return a non-nil error for baseline faults
-		// (we can't call it without an executor, but we verify the
-		// behavior contract via ImplByID + checking the guard in FaultApplyCmd)
-		impl := ImplByID(f.Def.ID)
-		if impl == nil {
-			t.Errorf("ImplByID(%s) returned nil", f.Def.ID)
+			t.Errorf("fault %s does not require CONFORMANT precondition", f.ID)
 		}
 	}
 }
@@ -172,7 +144,7 @@ func TestBaselineFaults_ApplyReturnsError(t *testing.T) {
 func TestNonReversibleFaults_AreF008AndF014(t *testing.T) {
 	nonReversibleIDs := map[string]bool{}
 	for _, f := range AllDefs() {
-		if !f.IsBaselineBehavior && !f.IsReversible {
+		if !f.IsReversible {
 			nonReversibleIDs[f.ID] = true
 		}
 	}
@@ -184,16 +156,13 @@ func TestNonReversibleFaults_AreF008AndF014(t *testing.T) {
 		t.Error("F-014 should be non-reversible")
 	}
 	if len(nonReversibleIDs) != 2 {
-		t.Errorf("expected exactly 2 non-reversible, non-baseline faults, got: %v", nonReversibleIDs)
+		t.Errorf("expected exactly 2 non-reversible faults, got: %v", nonReversibleIDs)
 	}
 }
 
 func TestNonReversibleFaults_RequireConfirmation(t *testing.T) {
 	// Non-reversible faults must require confirmation (binary rebuild)
 	for _, f := range AllDefs() {
-		if f.IsBaselineBehavior {
-			continue
-		}
 		if !f.IsReversible && !f.RequiresConfirmation {
 			t.Errorf("non-reversible fault %s must require confirmation", f.ID)
 		}
@@ -202,9 +171,6 @@ func TestNonReversibleFaults_RequireConfirmation(t *testing.T) {
 
 func TestNonReversibleFaults_HaveR3ResetTier(t *testing.T) {
 	for _, f := range AllDefs() {
-		if f.IsBaselineBehavior {
-			continue
-		}
 		if !f.IsReversible && f.ResetTier != "R3" {
 			t.Errorf("non-reversible fault %s must have R3 ResetTier, got %q", f.ID, f.ResetTier)
 		}
@@ -235,13 +201,12 @@ func TestPostconditions_FailingChecksAreKnownIDs(t *testing.T) {
 }
 
 func TestNonBaseline_NonBaselineHasPostcondition(t *testing.T) {
-	// Non-baseline, non-complex faults should have at least one failing check
-	// or a behavioral description.
-	// F-008 and F-014 are exceptions (manifest at shutdown or over time).
+	// All faults except F-008 and F-014 (which manifest at shutdown or over time)
+	// must have at least one failing check or a behavioral description.
 	exceptIDs := map[string]bool{"F-008": true, "F-014": true}
 
 	for _, f := range AllDefs() {
-		if f.IsBaselineBehavior || exceptIDs[f.ID] {
+		if exceptIDs[f.ID] {
 			continue
 		}
 		if f.Postcondition.Behavioral == "" && len(f.Postcondition.FailingChecks) == 0 {
