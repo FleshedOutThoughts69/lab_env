@@ -1,10 +1,13 @@
-package cmd
+package cmd_test
 
 // fault_test.go enforces the fault apply command contract from
 // control-plane-contract §4.5:
-//   - unknown fault ID rejected before lock acquisition
-//   - precondition failure rejected before mutation
-//   - baseline faults rejected before lock
+//   - unknown fault ID rejected before lock acquisition (precondition 1)
+//   - state precondition failure rejected before mutation (precondition 2)
+//   - already-active fault rejected before mutation (precondition 3)
+//   - PreconditionChecks guard: failing check rejects Apply (precondition 5)
+//   - --force bypasses state guards and PreconditionChecks (preconditions 2–5)
+//   - RequiresConfirmation abort without --yes (precondition 6)
 //   - TOCTOU re-read occurs after lock acquisition
 //   - Apply failure does NOT update state to DEGRADED
 //   - Apply success writes state + audit entry
@@ -340,7 +343,84 @@ func TestFaultApplyCmd_HistoryUpdated_OnSuccess(t *testing.T) {
 	}
 }
 
-// Verify catalog.AllDefs() is used for list (no executor dependency)
+func TestFaultApplyCmd_PreconditionCheckFails_F010(t *testing.T) {
+	// F-010 requires PreconditionChecks: [P-001] — app process must be running.
+	// When the observer reports the app process is NOT running, Apply must be
+	// rejected with ErrFaultPreconditionFailed (exit 3) before any mutation.
+	// control-plane-contract §4.5 step 5.
+	dir := t.TempDir()
+	store := state.NewStoreAt(filepath.Join(dir, "state.json"))
+	store.Write(state.Fresh(state.StateConformant))
+
+	// Observer reports app process NOT running (P-001 fails).
+	obs := &stubObserver{}
+	obs.serviceActive = map[string]bool{"app.service": false, "nginx": true}
+	obs.portListening = map[string]bool{"127.0.0.1:8080": false}
+	obs.endpointStatus = map[string]int{}
+
+	exec := newTrackingExecutor()
+	audit := executor.NewAuditLoggerAt(filepath.Join(dir, "audit.log"), "lab fault apply F-010")
+	cmd := NewFaultApplyCmd(obs, conformance.NewRunner(), exec, store, audit)
+
+	result := cmd.Run("F-010", false, false)
+
+	if result.ExitCode != 3 {
+		t.Errorf("ExitCode = %d for failing PreconditionCheck, want 3 (ErrFaultPreconditionFailed)", result.ExitCode)
+	}
+	if len(exec.mutationCalls) > 0 {
+		t.Errorf("no mutations should occur when PreconditionCheck fails, got: %v", exec.mutationCalls)
+	}
+	// State must remain CONFORMANT
+	sf2, _ := store.Read()
+	if sf2 != nil && sf2.State != state.StateConformant {
+		t.Errorf("State = %q after precondition check failure, want CONFORMANT", sf2.State)
+	}
+}
+
+func TestFaultApplyCmd_ForceBypassesPreconditionChecks(t *testing.T) {
+	// --force bypasses PreconditionChecks (step 5) in addition to state guards.
+	// With --force, F-010 Apply proceeds even when P-001 is not satisfied.
+	// control-plane-contract §4.5 --force scope.
+	dir := t.TempDir()
+	store := state.NewStoreAt(filepath.Join(dir, "state.json"))
+	store.Write(state.Fresh(state.StateConformant))
+
+	// Observer reports app process NOT running — would normally fail P-001.
+	obs := &stubObserver{}
+	obs.serviceActive = map[string]bool{"app.service": false, "nginx": true}
+	obs.portListening = map[string]bool{"127.0.0.1:8080": false}
+	obs.endpointStatus = map[string]int{}
+
+	exec := newTrackingExecutor()
+	audit := executor.NewAuditLoggerAt(filepath.Join(dir, "audit.log"), "lab fault apply F-010 --force")
+	cmd := NewFaultApplyCmd(obs, conformance.NewRunner(), exec, store, audit)
+
+	result := cmd.Run("F-010", true, false) // --force
+
+	// With --force, should not return exit 3 (precondition not met).
+	if result.ExitCode == 3 {
+		t.Error("--force should bypass PreconditionChecks, not return ExitCode 3")
+	}
+}
+
+func TestFaultApplyCmd_PreconditionCheckPasses_F010(t *testing.T) {
+	// F-010 with P-001 passing proceeds to Apply normally.
+	// control-plane-contract §4.5 step 5.
+	dir := t.TempDir()
+	store := state.NewStoreAt(filepath.Join(dir, "state.json"))
+	store.Write(state.Fresh(state.StateConformant))
+
+	exec := newTrackingExecutor() // serviceActive["app.service"] = true
+	audit := executor.NewAuditLoggerAt(filepath.Join(dir, "audit.log"), "lab fault apply F-010")
+	cmd := NewFaultApplyCmd(healthyObs(), conformance.NewRunner(), exec, store, audit)
+
+	result := cmd.Run("F-010", false, false)
+
+	// Should proceed to Apply (exit 0 on success, or 1 if Apply fails in test env)
+	if result.ExitCode == 3 {
+		t.Errorf("P-001 should pass with healthy observer; got exit 3: %v", result.Err)
+	}
+}
 func TestFaultList_UsesAllDefs(t *testing.T) {
 	cmd := NewFaultListCmd()
 	result := cmd.Run()

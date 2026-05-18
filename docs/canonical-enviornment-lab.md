@@ -1,12 +1,7 @@
-**Canonical Lab Environment**
-**Specification v1.4.0**
-
----
-
 # Canonical Lab Environment
-## Specification v1.4.0
+## Specification v1.0.0
 
-> **Document authority:** This document defines the canonical environment contract for the Linux, Networking, OS Fundamentals, and Security practice problem sets. The conformance suite is the final arbiter of *whether the environment meets the specification as implemented*. If the suite passes, the environment is conformant regardless of other runtime observations. The specification text defines what the suite MUST check and the canonical artifact contents.
+> **Document authority:** This document defines the canonical environment contract for the Linux, Networking, OS Fundamentals, and Security practice problem sets. It is the instantiation layer of the semantic model stack — it specifies the environment-specific paths, values, and commands that make the abstract models concrete. When this document conflicts with any semantic model document (`conformance-model.md`, `system-state-model.md`, `fault-model.md`, `control-plane-contract.md`), the semantic model document is authoritative. When runtime observation and this document conflict, the environment is non-conformant.
 >
 > **Companion repository:** `lab-env/` — contains the Go service implementation, bootstrap script, conformance suite, fault injection scripts, and reset scripts. This document defines what those artifacts must do; the repository implements it.
 >
@@ -14,11 +9,19 @@
 
 ---
 
-## Authority Hierarchy
+## Document Authority Hierarchy
 
-When sources disagree, resolve by priority (highest first):
+The semantic model documents form an ordered authority stack. When sources conflict, the higher authority wins:
 
-1. **Conformance suite** — the executable expression of this spec (`lab-env/validate.sh`). If the suite passes, the environment is conformant regardless of other observations.
+1. `conformance-model.md` — defines what conformance means; check catalog is normative
+2. `system-state-model.md` — defines all six environment states and transition rules
+3. `fault-model.md` — defines fault semantics, the fault catalog, and Apply/Recover contracts
+4. `control-plane-contract.md` — defines the `lab` CLI command contracts
+5. **This document** — instantiates the above into specific paths, values, and Ubuntu-specific commands
+
+**Evidence precedence for runtime interpretation** (when troubleshooting a live environment):
+
+1. **Conformance suite output** — `lab validate` or `scripts/validate.sh`. If the suite passes, the environment is conformant regardless of other observations.
 2. **Canonical artifact contents** — the exact file contents defined in §4 of this document.
 3. **Spec text** — the normative statements in this document.
 4. **Runtime observation** — what tools show about the running system.
@@ -26,20 +29,20 @@ When sources disagree, resolve by priority (highest first):
 
 ---
 
-## Conformance Model
+## Environment State Model
 
-An environment is in exactly one of the following **six states**:
+The environment is always in exactly one of **six** states as defined in `system-state-model.md` §2:
 
-| State | Description |
-|---|---|
-| **UNPROVISIONED** | No canonical files, users, or services present. |
-| **PROVISIONED** | Bootstrap completed, conformance not yet verified. |
-| **CONFORMANT** | All **blocking** conformance checks pass. No fault is active. Every practice problem begins from this state unless the problem explicitly states a fault is active. |
-| **FAULTED** | A fault from the fault catalog (§7) has been deliberately applied. The environment is intentionally non‑conformant in a specific, documented way. The active fault ID MUST be recorded. Reset returns the environment to CONFORMANT. |
-| **BROKEN** | One or more **blocking** conformance checks fail due to unintended modification, build failure, provisioning error, or manual intervention. No fault is active — the breakage was not deliberately applied through the control plane. |
-| **RECOVERING** | A reset operation is in progress. This state is transitional — the environment is actively being modified to return to CONFORMANT. |
+- **UNPROVISIONED** — bootstrap has not been run
+- **PROVISIONED** — bootstrap completed; conformance not yet verified
+- **CONFORMANT** — all conformance checks pass; baseline for fault injection
+- **DEGRADED** — a fault from §7 is active; environment is intentionally non-conformant in a documented way
+- **BROKEN** — one or more blocking checks fail with no active fault explaining the failure; reset required
+- **RECOVERING** — a reset operation is in progress; transient
 
-**Degraded‑severity check failures** (e.g., log rotation not yet triggered, TLS cert near expiry) are *not* a separate state. When only degraded checks fail and all blocking checks pass, the environment remains **CONFORMANT**. The conformance suite output will note the degraded failures as warnings, but the environment is considered fully operational for all practice problems.
+**CONFORMANT** is the required state before every practice problem unless the problem explicitly states a fault is active. **DEGRADED** is the expected state during fault-injection exercises. **BROKEN** requires a reset before continuing.
+
+For degraded-conformant sub-classification (blocking checks pass but one or more degraded-severity checks fail), see `conformance-model.md` §4.5. This sub-classification does not change permitted operations.
 
 ---
 
@@ -58,9 +61,10 @@ This environment intentionally excludes:
 - Distributed tracing
 - Databases (no PostgreSQL, MySQL, Redis)
 - SELinux (Ubuntu ships AppArmor; see §9)
-- Go toolchains newer than 1.21 (the binary MUST be compiled with Go 1.21.x)
 
 Adding any of these to the environment produces undefined behavior for the practice problems.
+
+---
 
 ---
 
@@ -91,7 +95,7 @@ The environment is designed so that exactly one layer can be broken at a time, t
 - **Base OS:** Ubuntu Server 22.04.4 LTS (Jammy Jellyfish)
 - **Architecture:** x86-64
 - **Minimum resources:** 1 vCPU, 1GB RAM, 10GB disk
-- **Provisioning:** target-agnostic bootstrap script on a fresh Ubuntu 22.04 installation. The bootstrap MUST detect a fresh installation by verifying the absence of `/etc/systemd/system/app.service` before creating it. The bootstrap MUST be idempotent — running it twice on the same system MUST converge to the canonical baseline without error.
+- **Provisioning:** target-agnostic bootstrap script on a fresh Ubuntu 22.04 installation. The bootstrap MUST be idempotent — running it twice on the same system MUST converge to the canonical baseline without error.
 
 ## 2.2 Users
 
@@ -125,7 +129,7 @@ All paths MUST exist with exactly the ownership and mode specified. Deviation is
 
 ## 2.4 Baseline Service State (Known-Good)
 
-The following MUST be true in a CONFORMANT environment:
+The following MUST be true in a conformant environment:
 
 - `systemctl is-active app` → `active`
 - `systemctl is-enabled app` → `enabled`
@@ -183,17 +187,14 @@ The Go service is a single HTTP server process. This section defines its contrac
 1. `/etc/app/config.yaml` MUST exist and be readable by the process UID.
 2. `/etc/app/config.yaml` MUST be valid YAML conforming to the schema in §4.2.
 3. Environment variable `APP_ENV` MUST be set and non-empty.
-4. `/var/lib/app/` MUST exist and be a directory.
+4. `/var/lib/app/` MUST exist and be writable by the process UID.
 
 **On precondition failure:**
 
 - Missing or unreadable config: the process MUST log a structured error to stdout (captured by journald), MUST exit with code 1, MUST NOT attempt to bind.
 - Invalid config YAML: same as above.
 - Missing `APP_ENV`: same as above.
-- `/var/lib/app/` not existing: same as above.
-
-**Deferred writability check:**
-- The writability of `/var/lib/app/` is **not** verified at startup. If the directory exists but is not writable by the process UID, the process MAY start successfully. The failure will manifest on the first `GET /` request (returns 500, error logged to app.log). The service MUST NOT exit because of an unwritable state directory.
+- Unwritable `/var/lib/app/`: the process MAY start successfully. The failure is deferred to the first `/` request.
 
 **Startup log (REQUIRED):**
 
@@ -269,7 +270,7 @@ The process MUST emit the following structured log line to stdout on successful 
 
 ### `GET /slow`
 
-**Purpose:** controlled latency endpoint for timeout and proxy behavior problems. **Baseline behavior:** nginx's `proxy_read_timeout` (3s) is shorter than the default 5‑second sleep, producing a 504 Gateway Timeout. This is intentional and not a fault.
+**Purpose:** controlled latency endpoint for timeout and proxy behavior problems.
 
 **Behavior:**
 - Sleep for `SLOW_DELAY_SECONDS` seconds (default: 5; configurable via environment variable).
@@ -279,12 +280,6 @@ The process MUST emit the following structured log line to stdout on successful 
 **Response (if not timed out by proxy):**
 - Status: 200
 - Body: `{"status":"ok","path":"/slow","delay_seconds":<N>}`
-
-**Typical observation:**
-```bash
-curl -v http://localhost/slow   # → 504 Gateway Time-out after ~3s
-time curl http://localhost/slow # duration ~3s
-```
 
 ---
 
@@ -359,7 +354,7 @@ Logs MUST be written to the file at `/var/log/app/app.log` directly (not to stdo
 
 ## 3.6 Log File Behavior
 
-The service opens `/var/log/app/app.log` with `O_WRONLY|O_CREATE|O_APPEND` at startup. It does NOT reopen the file on SIGHUP (log rotation is handled by logrotate's `copytruncate` directive — see §4.5).
+The service opens `/var/log/app/app.log` with `O_WRONLY|O_CREATE|O_APPEND` at startup. It does NOT reopen the file on SIGHUP (log rotation is handled by logrotate's copytruncate directive — see §4.5).
 
 If the log file is not writable at startup, the process MUST log an error to stdout and exit with code 1.
 
@@ -570,7 +565,7 @@ The bootstrap script (`lab-env/bootstrap.sh`) MUST:
 1. Be idempotent — running it twice on the same system MUST produce the same result as running it once.
 2. Run without interactive prompts.
 3. Complete successfully on a fresh Ubuntu 22.04 LTS installation with internet access.
-4. Leave the environment in CONFORMANT state (all blocking conformance suite checks pass) upon completion.
+4. Leave the environment in conformant state (all conformance suite checks pass) upon completion.
 5. Print a summary of actions taken.
 6. Exit non-zero if any step fails.
 
@@ -593,158 +588,122 @@ lsof
 htop
 vim
 git
+golang-go
 ```
 
-**Go toolchain:** The bootstrap MUST make **Go 1.21.x** available for compiling the service and the `lab` CLI. Ubuntu 22.04’s default `golang-go` package is version 1.18 and is insufficient. The script MUST therefore add the **`ppa:longsleep/golang-backports`** repository and install the package `golang-1.21-go`, then ensure `go` resolves to that version. The script SHALL verify that `go version` reports ≥1.21.0 before proceeding.
+The Go toolchain MUST be present for binary compilation during provisioning. The learner does NOT need to compile the service — the bootstrap script compiles and installs the binary.
 
 ## 5.3 Bootstrap Sequence
 
 The bootstrap MUST execute in this order:
 
 1. Update package index
-2. Install required packages (all except Go)
-3. Add `ppa:longsleep/golang-backports` and install `golang-1.21-go`; ensure `go` command is available at version ≥1.21
-4. Create `appuser` (UID 1001, no shell, no home)
-5. Create `devuser` (UID 1000, add to `sudo` group)
-6. Create directory structure with correct ownership and modes
-7. Copy and render configuration files from `lab-env/config/`
-8. Compile Go service (`cd lab-env/service && go build -o /opt/app/server .`)
-9. Set service binary ownership (`appuser:appuser`) and permissions (`750`)
-10. Compile `lab` CLI (`cd /opt/lab-env && go build -o /usr/local/bin/lab ./cmd/lab/`)
-11. Set `lab` binary ownership (`root:root`) and permissions (`755`)
-12. Generate TLS certificate
-13. Install nginx configuration
-14. Add `app.local` to `/etc/hosts`
-15. Install logrotate configuration
-16. Install sudoers entry for `devuser`
-17. Generate environment manifest (see below)
-18. Enable and start `app.service`
-19. Enable and start `nginx`
-20. Run conformance suite — exit non-zero if any blocking check fails
-
-**Manifest generation command (step 17):**
-
-```bash
-sha256sum \
-  /opt/app/server \
-  /etc/app/config.yaml \
-  /etc/systemd/system/app.service \
-  /etc/nginx/sites-enabled/app \
-  /etc/nginx/tls/app.local.crt \
-  /etc/nginx/tls/app.local.key \
-  > /opt/lab-env/MANIFEST
-```
-
-The TLS private key is included for integrity verification; implementors should note that the manifest file will be world‑readable and should be protected accordingly if the environment is exposed to untrusted users.
+2. Install package dependencies
+3. Create `appuser` (UID 1001, no shell, no home)
+4. Create `devuser` (UID 1000, sudo)
+5. Create directory structure with correct ownership and modes
+6. Copy and render configuration files from `lab-env/config/`
+7. Compile Go service (`cd lab-env/service && go build -o /opt/app/server .`)
+8. Set binary ownership and permissions
+9. Generate TLS certificate
+10. Install nginx configuration
+11. Add `app.local` to `/etc/hosts`
+12. Install logrotate configuration
+13. Install sudoers entry
+14. Enable and start `app.service`
+15. Enable and start `nginx`
+16. Run conformance suite — exit non-zero if any check fails
 
 ## 5.4 Idempotency Contract
 
-Re-running the bootstrap script on a CONFORMANT environment MUST:
-- Recompile and reinstall both binaries (service and `lab`)
+Re-running the bootstrap script on a conformant environment MUST:
+- Recompile and reinstall the binary (safe — service is restarted after)
 - Regenerate TLS certificate only if it is missing or expired
 - Restore any configuration file that differs from canonical contents
 - Restart services only if configuration changed
 - NOT delete or modify `app.log` contents
 - NOT delete `/var/lib/app/state`
 - Pass the conformance suite upon completion
-- If the required UIDs (1000, 1001) are already occupied by different usernames, the script SHALL fail with a clear error message; it MUST NOT silently replace existing users. (Handling of non‑UID conflicts, e.g., reusing the same username with a different UID, is implementation‑defined but must result in the canonical users being present.)
 
 ---
 
 # §6 — Conformance Suite
 
-The conformance suite is the executable expression of this specification. A CONFORMANT environment MUST pass all blocking checks. The suite is at `lab-env/validate.sh`.
+The conformance suite is the executable expression of this specification. A conformant environment MUST pass all checks. The suite is at `lab-env/validate.sh`.
 
 ## 6.1 Conformance Checks
-
-Each check is classified as **blocking** (failure → environment is BROKEN if no fault active) or **degraded** (failure is noted as a warning but the environment remains CONFORMANT). The suite exit code reflects only blocking failures.
 
 ### System state checks
 
 ```bash
-# S-001: app service is active (blocking)
+# S-001: app service is active
 systemctl is-active app.service --quiet
-# S-002: app service is enabled (blocking)
+# S-002: app service is enabled
 systemctl is-enabled app.service --quiet
-# S-003: nginx service is active (blocking)
+# S-003: nginx service is active
 systemctl is-active nginx --quiet
-# S-004: nginx service is enabled (blocking)
+# S-004: nginx service is enabled
 systemctl is-enabled nginx --quiet
-# S-005: app unit file is syntactically valid (blocking)
-# Warnings MAY be printed but a syntax error that prevents loading MUST cause failure.
-systemd-analyze verify /etc/systemd/system/app.service
-# S-006: devuser sudoers entry present (blocking)
-# Implementation may adapt the grep pattern to match exact output; the check must confirm full sudo access.
-sudo -l -U devuser 2>/dev/null | grep -q '(ALL:ALL) ALL'
 ```
 
 ### Process checks
 
 ```bash
-# P-001: app process is running as appuser (blocking)
+# P-001: app process is running as appuser
 pgrep -u appuser server > /dev/null
-# P-002: app is listening on 127.0.0.1:8080 (blocking)
+# P-002: app is listening on 127.0.0.1:8080
 ss -ltnp | grep -q '127.0.0.1:8080'
-# P-003: nginx is listening on 0.0.0.0:80 (blocking)
+# P-003: nginx is listening on 0.0.0.0:80
 ss -ltnp | grep -q '0.0.0.0:80'
-# P-004: nginx is listening on 0.0.0.0:443 (blocking)
+# P-004: nginx is listening on 0.0.0.0:443
 ss -ltnp | grep -q '0.0.0.0:443'
 ```
 
 ### Endpoint checks
 
 ```bash
-# E-001: /health returns 200 (blocking)
+# E-001: /health returns 200
 curl -sf http://localhost/health > /dev/null
-# E-002: / returns 200 (blocking)
+# E-002: / returns 200
 curl -sf http://localhost/ > /dev/null
-# E-003: /health body contains status:ok (blocking)
+# E-003: /health body contains status:ok
 curl -s http://localhost/health | jq -e '.status == "ok"' > /dev/null
-# E-004: X-Proxy header is present (blocking)
+# E-004: X-Proxy header is present (nginx is proxying)
 curl -sI http://localhost/ | grep -q 'X-Proxy: nginx'
-# E-005: HTTPS endpoint responds (self-signed cert, skip verify) (blocking)
+# E-005: HTTPS endpoint responds (self-signed cert, skip verify)
 curl -skf https://app.local/health > /dev/null
 ```
 
 ### Filesystem checks
 
 ```bash
-# F-001: binary exists with correct mode (blocking)
+# F-001: binary exists with correct mode
 test -x /opt/app/server
 stat -c '%U:%G %a' /opt/app/server | grep -q 'appuser:appuser 750'
-# F-002: config exists with correct mode (blocking)
+# F-002: config exists with correct mode
 stat -c '%U:%G %a' /etc/app/config.yaml | grep -q 'appuser:appuser 640'
-# F-003: log directory exists with correct mode (blocking)
+# F-003: log directory exists with correct mode
 stat -c '%U:%G %a' /var/log/app | grep -q 'appuser:appuser 755'
-# F-004: state directory exists with correct mode (blocking)
+# F-004: state directory exists with correct mode
 stat -c '%U:%G %a' /var/lib/app | grep -q 'appuser:appuser 755'
-# F-005: nginx config is valid (blocking)
+# F-005: nginx config is valid
 nginx -t 2>/dev/null
-# F-006: TLS cert exists and is not expired (degraded)
+# F-006: TLS cert exists and is not expired
 openssl x509 -checkend 0 -noout -in /etc/nginx/tls/app.local.crt
-# F-007: app.local resolves to 127.0.0.1 (blocking)
+# F-007: app.local resolves to 127.0.0.1
 getent hosts app.local | grep -q '127.0.0.1'
 ```
 
 ### Log checks
 
 ```bash
-# L-001: app.log exists and is non-empty (degraded)
+# L-001: app.log exists and is non-empty
 test -s /var/log/app/app.log
-# L-002: app.log contains valid JSON (last line) (degraded)
+# L-002: app.log contains valid JSON (last line)
 tail -1 /var/log/app/app.log | jq . > /dev/null 2>&1
-# L-003: app.log contains a startup entry (degraded)
+# L-003: app.log contains a startup entry
 grep -q '"msg":"server started"' /var/log/app/app.log
 ```
-
-### Manifest drift check (separate invocation)
-
-```bash
-# M-001: all canonical files match stored checksums (blocking when invoked via validate.sh --manifest-check)
-sha256sum -c /opt/lab-env/MANIFEST
-```
-
-The `--manifest-check` flag runs M-001 in addition to all other checks; failure is blocking.
 
 ## 6.2 Conformance Suite Output Format
 
@@ -752,12 +711,13 @@ The suite MUST output one line per check:
 
 ```
 [PASS] S-001: app service is active
-[WARN] F-006: TLS certificate expired (degraded)
+[PASS] S-002: app service is enabled
+[FAIL] E-001: /health returns 200
 ...
-CONFORMANCE RESULT: 25/25 checks passed (0 degraded). Environment is CONFORMANT.
+CONFORMANCE RESULT: 20/23 checks passed. Environment is NON-CONFORMANT.
 ```
 
-**Exit codes:** exit 0 if all blocking-severity checks pass (degraded failures do not affect exit code). Exit 1 if any blocking check fails.
+**Exit codes:** exit 0 if all blocking-severity checks pass (degraded-severity check failures — F-006, L-001, L-002, L-003 — do not affect the exit code and produce a degraded-conformant classification). Exit 1 if any blocking-severity check fails. Authoritative severity classifications: `conformance-model.md` §3.1. Degraded-conformant semantics: `conformance-model.md` §4.5.
 
 ---
 
@@ -766,6 +726,10 @@ CONFORMANCE RESULT: 25/25 checks passed (0 degraded). Environment is CONFORMANT.
 Faults are the operational backbone of the incident lab problems. Each fault is a deterministic, documented mutation of the environment that produces a specific, observable failure while leaving all other layers intact.
 
 ## 7.1 Fault Entry Schema
+
+## 7.1 Fault Entry Schema
+
+**Scope:** this schema defines the operator-facing view of each fault — the fields a learner or instructor needs to apply, observe, and reset a fault. It is a deliberate subset of the full implementer schema defined in `fault-model.md` §3.1. Implementation fields (`Apply`, `Recover`, `IsReversible`, `RequiresConfirmation`, `PreconditionChecks`, `Postcondition`) are defined in `fault-model.md` and are not repeated here. For any question about fault semantics, `fault-model.md` is authoritative.
 
 | Field | Description |
 |---|---|
@@ -776,7 +740,7 @@ Faults are the operational backbone of the incident lab problems. Each fault is 
 | **Symptom** | What the learner observes |
 | **Authoritative signal** | The source of truth that confirms the fault |
 | **Observable** | The specific tool and output that shows the fault |
-| **Reset tier** | R1, R2, or R3 (see §8) |
+| **Reset tier** | R1, R2, or R3 (see §8). Authoritative source: `fault-model.md` §7.2 `ResetTier` field. |
 | **Reset action** | The exact command that restores the canonical state |
 
 ## 7.2 Fault Catalog
@@ -898,7 +862,7 @@ Faults are the operational backbone of the incident lab problems. Each fault is 
 | Symptom | `sudo systemctl stop app` hangs for 90 seconds before SIGKILL |
 | Authoritative signal | `systemctl status app` showing `stop-sigterm → stop-sigkill` transition |
 | Observable | `systemctl stop app` does not return promptly; after 90s, journald shows `Killed` |
-| Reset tier | R3 (requires rebuild) |
+| Reset tier | R3 |
 | Reset action | Rebuild without fault flag, redeploy |
 
 ---
@@ -933,6 +897,36 @@ Faults are the operational backbone of the incident lab problems. Each fault is 
 
 ---
 
+**B-001 — nginx proxy\_read\_timeout shorter than app processing (504)**
+
+| Field | Value |
+|---|---|
+| Layer | `proxy`, `network` |
+| Domain | `networking` |
+| Mutation | None — this is a baseline network behaviour (fault-model.md §10). `GET /slow` naturally exceeds nginx's 3-second `proxy_read_timeout`. |
+| Symptom | `curl http://localhost/slow` returns 504 after approximately 3 seconds |
+| Authoritative signal | curl response code + timing |
+| Observable | `curl -v http://localhost/slow` shows `504 Gateway Time-out` with `X-Proxy: nginx`; `time curl http://localhost/slow` shows ~3 second duration |
+| Reset tier | N/A — baseline network behaviour, not a fault |
+| Reset action | N/A |
+
+---
+
+**B-002 — TLS certificate not in trust store**
+
+| Field | Value |
+|---|---|
+| Layer | `network` |
+| Domain | `networking`, `security` |
+| Mutation | None — this is a baseline network behaviour (fault-model.md §10). |
+| Symptom | `curl https://app.local/health` fails with TLS error |
+| Authoritative signal | curl TLS error output |
+| Observable | `curl -v https://app.local/health` shows `SSL certificate problem: self-signed certificate`; `curl -sk https://app.local/health` succeeds (skip verify) |
+| Reset tier | N/A — baseline network behaviour, not a fault |
+| Reset action | Problem-specific: `sudo cp /etc/nginx/tls/app.local.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates` to install; reverse to uninstall |
+
+---
+
 **F-013 — Service enabled but unit file broken (startup failure on boot)**
 
 | Field | Value |
@@ -958,7 +952,7 @@ Faults are the operational backbone of the incident lab problems. Each fault is 
 | Symptom | `ps aux` shows growing count of `Z` state (zombie) processes parented to the app |
 | Authoritative signal | `ps -eo pid,ppid,stat,comm | grep Z` |
 | Observable | Zombie count increases with each `/` request; `pstree -p $(pgrep server)` shows zombie children |
-| Reset tier | R3 (requires rebuild) |
+| Reset tier | R3 |
 | Reset action | Rebuild without fault flag, redeploy |
 
 ---
@@ -1021,64 +1015,74 @@ Faults are the operational backbone of the incident lab problems. Each fault is 
 | Reset tier | R2 |
 | Reset action | `sudo rm /var/lib/app/file_*` |
 
-> **Note:** Fault identifiers F-011 and F-012 are intentionally absent — the corresponding behaviors are baseline characteristics, not faults (see Appendix A).
-
 ---
 
 # §8 — State Control
 
 ## 8.1 Reset Tiers
 
+Reset tiers R1, R2, and R3 are executable via the `lab` CLI (`control-plane-contract.md` §4.6). They are ordered by destructiveness — always attempt the lowest tier first.
+
 **R1 — Service restart:**
-Restores runtime state without modifying any files. Use when the fault is in process state only.
+Restores runtime state without modifying any files. Use when the fault is in process state only (e.g., F-010).
 
 ```bash
-sudo systemctl restart app
-sudo systemctl restart nginx    # only if nginx was mutated
+lab reset --tier R1
 ```
 
 **R2 — Configuration restore:**
-Restores canonical file contents and restarts affected services. Use for permission, configuration, and filesystem faults.
+Restores canonical file contents and restarts affected services. Use for permission, configuration, and filesystem faults (the majority of the catalog).
 
 ```bash
-sudo lab-env/reset.sh --config
-sudo systemctl daemon-reload
-sudo systemctl restart app
-sudo nginx -s reload
+lab reset --tier R2
 ```
 
 **R3 — Full reprovision:**
-Re-runs the bootstrap script. Use when the binary has been replaced, the service account modified, or the environment has drifted beyond R2 recovery.
+Re-runs the bootstrap script. Required when the binary has been replaced or the service account modified (F-008, F-014). This is the highest tier reachable via the `lab` CLI.
 
 ```bash
-sudo lab-env/bootstrap.sh
+lab reset --tier R3
 ```
 
-**R4 — Snapshot rollback:**
-If the VM has a baseline snapshot, roll back to it. This is the most complete reset — every change, including those not tracked by R1–R3, is reversed. This SHOULD be done before each new Phase E incident lab problem.
+**VM snapshot rollback (outside the `lab` CLI):**
+If the VM has a baseline snapshot, rolling back to it is the most complete recovery — every change, including those not tracked by R1–R3, is reversed. This is a hypervisor-level operation, not a `--tier` value, and is not accessible via `lab reset`. It SHOULD be used before each new Phase E incident lab problem.
+
+```bash
+# Hypervisor-specific — e.g., VirtualBox:
+VBoxManage snapshot <vm-name> restore <snapshot-name>
+```
 
 ## 8.2 Reset Script Contract
 
-`lab-env/reset.sh` MUST accept the following flags:
+`lab-env/reset.sh` is a thin shell wrapper that delegates to `lab reset`. It MUST accept the following flags, which map directly to `lab reset --tier`:
 
-| Flag | Action |
-|---|---|
-| `--config` | Restore all canonical config files to spec-defined contents |
-| `--permissions` | Restore all canonical ownership and mode bits |
-| `--logs` | Truncate `app.log` to empty (preserves file with correct ownership) |
-| `--state` | Remove and recreate `/var/lib/app/state` |
-| `--full` | All of the above, then `systemctl daemon-reload`, restart app, reload nginx |
+| Flag | Equivalent | Action |
+|---|---|---|
+| `--config` | `lab reset --tier R2` | Restore all canonical config files to spec-defined contents |
+| `--permissions` | `lab reset --tier R2` | Restore all canonical ownership and mode bits |
+| `--logs` | `lab reset --tier R1` | Truncate `app.log` to empty (preserves file with correct ownership) |
+| `--state` | `lab reset --tier R1` | Remove and recreate `/var/lib/app/state` |
+| `--full` | `lab reset --tier R3` | Full reprovision: all of the above, then `systemctl daemon-reload`, restart app, reload nginx |
 
-> **Note:** Fault injection and reversal are handled exclusively by the `lab fault` command (see §12). The reset script is restricted to canonical state restoration.
+**Applying and reversing faults** is performed via the `lab` CLI directly, not via `reset.sh`:
 
-After any reset, the conformance suite MUST be run to verify the environment is CONFORMANT.
+```bash
+lab fault apply <ID>          # apply a fault
+lab reset --tier <R1|R2|R3>   # reverse a fault (use the fault's declared ResetTier)
+```
+
+After any reset, the conformance suite MUST be run to verify the environment is conformant:
+
+```bash
+lab validate
+```
 
 ## 8.3 Snapshot Strategy
 
 A baseline snapshot MUST be taken after successful provisioning and before any learner interaction. Snapshot naming convention:
 
 ```
-lab-env-baseline-v1.4.0-<YYYY-MM-DD>
+lab-env-baseline-v1.0.0-<YYYY-MM-DD>
 ```
 
 Additional snapshots SHOULD be taken at the end of each phase:
@@ -1093,9 +1097,17 @@ The baseline snapshot is the authoritative rollback target. Phase snapshots enab
 
 ## 8.4 Environment Versioning
 
-**Spec version:** defined in this document's title (`v1.4.0`).
+**Spec version:** defined in this document's title (`v1.0.0`).
 
-**Environment manifest:** `/opt/lab-env/MANIFEST` contains SHA256 checksums of all canonical files, generated during provisioning (see §5.3 step 17).
+**Environment manifest:** `lab-env/MANIFEST` contains SHA256 checksums of all canonical files:
+
+```
+sha256sum /opt/app/server > lab-env/MANIFEST
+sha256sum /etc/app/config.yaml >> lab-env/MANIFEST
+sha256sum /etc/systemd/system/app.service >> lab-env/MANIFEST
+sha256sum /etc/nginx/sites-enabled/app >> lab-env/MANIFEST
+sha256sum /etc/nginx/tls/app.local.crt >> lab-env/MANIFEST
+```
 
 **Drift detection:**
 
@@ -1217,35 +1229,75 @@ The following are explicitly outside the scope of this environment. Adding any o
 
 ---
 
-# §12 — Lab Control Plane
+# §13 — Lab Control Plane
+
+> **Instantiation note:** This section describes how the lab control plane is instantiated in this environment. Semantic authority for all state, transition, fault, and conformance definitions resides in the model documents. This section references those definitions and specifies the implementation target. It does not redefine any semantic model content.
 
 The `lab` CLI is a Go binary compiled during provisioning and installed at `/usr/local/bin/lab`. It is the single interface for all environment lifecycle operations: provisioning, validation, fault injection, reset, and state inspection. No other tool or script SHOULD be used to mutate the canonical environment — all mutations MUST route through `lab` or the underlying scripts it calls.
 
-## 12.1 — State Machine
+**Authoritative specification documents:**
 
-The environment occupies one of the six states defined in the Conformance Model:
+| Concern | Authoritative document |
+|---|---|
+| State definitions, invariants, transitions | `system-state-model.md` |
+| Conformance check catalog, validation semantics | `conformance-model.md` |
+| Fault definitions, mutation rules, fault catalog | `fault-model.md` |
+| CLI command contracts, exit codes, schemas | `control-plane-contract.md` |
+
+---
+
+## 13.1 — State Machine (reference)
+
+The environment occupies one of six states at all times. Authoritative definitions: `system-state-model.md` §2.
 
 ```
 UNPROVISIONED ──provision──► PROVISIONED ──validate──► CONFORMANT
-                                                        │    ▲
-                                          fault apply    │    │
-                                          ┌───────────┘    │
-                                          ▼                │
-                                       FAULTED ──reset─────┘
-                                          │
-                                    (break)│
-                                          ▼
-                                       BROKEN ──reset──► RECOVERING ──► CONFORMANT
+                                                            │    ▲
+                                                    fault apply  reset
+                                                            │    │
+                                                            ▼    │
+                                                         DEGRADED
+                                                            │
+                                                    (unexpected break)
+                                                            │
+                                                            ▼
+                                                          BROKEN
+                                                            │
+                                                          reset
+                                                            ▼
+                                                        RECOVERING ──► CONFORMANT
 ```
 
-**Transition summary:**
-- `lab provision`: UNPROVISIONED → PROVISIONED → CONFORMANT (if conformance passes)
-- `lab fault apply <ID>`: CONFORMANT → FAULTED (active fault ID recorded)
-- `lab reset [--tier R1|R2|R3]`: FAULTED or BROKEN → CONFORMANT (or RECOVERING → CONFORMANT)
-- Unexpected breakage: CONFORMANT or FAULTED → BROKEN
-- `lab reset` on BROKEN: BROKEN → RECOVERING → CONFORMANT
+States in brief (full invariants and transition rules: `system-state-model.md` §2–§3):
 
-## 12.2 — Command Surface
+- **UNPROVISIONED** — no canonical files, users, or services present
+- **PROVISIONED** — bootstrap completed, conformance not yet verified
+- **CONFORMANT** — all blocking conformance checks pass; no active fault. Definition: `conformance-model.md` §3, `system-state-model.md` §2.3
+- **DEGRADED** — exactly one catalog fault deliberately applied; active fault ID recorded
+- **BROKEN** — one or more blocking checks fail; no active fault; recoverable
+- **RECOVERING** — reset operation in progress (transitional)
+
+Transition guards, forbidden transitions, and failure semantics: `system-state-model.md` §3.
+
+State detection precedence and conflict resolution: `system-state-model.md` §4.
+
+---
+
+## 13.2 — Transition Model (reference)
+
+Every `lab` command is a named transition or observation over the state machine. Transitions are synchronous — the binary does not return until the transition completes and the resulting state is recorded. Transition failure semantics: `system-state-model.md` §3.5.
+
+**`lab status`** is the canonical reconciliation point — the only command authorized to reconcile observed runtime reality with recorded control-plane state. See `control-plane-contract.md` §4.1.
+
+**`lab validate`** is an observation primitive — it records conformance observations but does NOT update the authoritative state classification. State reconciliation occurs only via `lab status`. See `control-plane-contract.md` §4.2.
+
+Subsystems participating in transitions: systemd, nginx, filesystem, Go binary, conformance suite, state file. Detailed executor contract: `control-plane-contract.md` §5.
+
+---
+
+## 13.3 — Command Surface
+
+Eight commands. Full behavioral contracts — preconditions, exit codes, state file effects, audit obligations — in `control-plane-contract.md` §4.
 
 | Command | Type | Transition |
 |---|---|---|
@@ -1253,67 +1305,124 @@ UNPROVISIONED ──provision──► PROVISIONED ──validate──► CONFO
 | `lab validate` | observation | none (records observations only) |
 | `lab fault list` | read-only | none |
 | `lab fault info <ID>` | read-only | none |
-| `lab fault apply <ID>` | mutating | CONFORMANT → FAULTED |
+| `lab fault apply <ID>` | mutating | CONFORMANT → DEGRADED |
 | `lab reset [--tier R1\|R2\|R3]` | mutating | any → CONFORMANT |
 | `lab provision` | mutating | UNPROVISIONED → CONFORMANT |
 | `lab history` | read-only | none |
 
-**Idempotency:** `status`, `validate`, `reset`, `provision`, `history`, `fault list`, `fault info` are idempotent. `fault apply` is not — it is a stateful mutation; a guard prevents applying a fault when already FAULTED.
-
-**Output:** all commands accept a `--json` flag to emit structured JSON to stdout; human‑readable text is the default. Diagnostics go to stderr.
-
-## 12.3 — Fault Execution
-
-Faults are applied exactly as documented in §7.2. The executor (`lab-env/cmd/lab/internal/executor/executor.go`) is the only component allowed to mutate the system. Every mutation produces an audit log entry at `/var/lib/lab/audit.log`.
-
-Faults F-008 and F-014 are **irreversible without R3** (full rebuild). They require explicit confirmation (`--confirm` flag) when applied.
-
-## 12.4 — State File
-
-Control‑plane memory is stored at `/var/lib/lab/state.json` (root:root, mode 644). It records:
-- current state classification
-- active fault ID (if any)
-- last transition timestamp
-- history ring buffer of past transitions (limited to the most recent **100** entries)
-
-The file is updated atomically via temp‑file + rename. If the file is corrupted or missing, `lab status` treats the environment as BROKEN and requires a reset.
-
-## 12.5 — Repository Layout
-
-```
-lab-env/
-├── cmd/
-│   └── lab/                    # CLI binary (compiled during provisioning)
-│       ├── main.go
-│       └── internal/...
-├── service/                    # Go HTTP service (separate from CLI)
-├── config/                     # canonical config file templates
-│   ├── app.service
-│   ├── nginx-app.conf
-│   ├── config.yaml
-│   └── logrotate-app
-├── bootstrap.sh                # provisions the environment; calls lab provision
-├── validate.sh                 # thin wrapper: exec lab validate "$@"
-└── reset.sh                    # thin wrapper: exec lab reset "$@"
-```
-
-The shell scripts are thin wrappers that delegate to the `lab` binary. Once the binary exists, all operations SHOULD use `lab` directly. The `lab` binary is compiled during provisioning with `go build -o /usr/local/bin/lab ./cmd/lab/` using Go 1.21.x.
+**Idempotency:** `status`, `validate`, `reset`, `provision`, `history`, `fault list`, `fault info` are idempotent. `fault apply` is not — stateful mutation; guard prevents double-apply.
 
 ---
 
-# Appendix A — Baseline Behavioral Characteristics
+## 13.4 — Fault Execution Model (reference)
 
-This appendix documents behaviors that are intentional and permanent properties of the environment. They are **not faults** — they cannot be “applied” or “reset,” and they do not appear in the fault catalog.
+Faults are typed operators. Full schema, mutation rules, reversibility semantics, and precondition/postcondition specifications: `fault-model.md` §2–§6.
 
-| ID | Behavior | Observable |
-|---|---|---|
-| B-001 | `GET /slow` exceeds nginx `proxy_read_timeout` (3s) → 504 Gateway Timeout | `curl http://localhost/slow` returns 504 after ~3s |
-| B-002 | TLS certificate is self‑signed and not in the trust store → TLS error unless `-k` used | `curl https://app.local/health` fails; `curl -sk` succeeds |
+Key instantiation properties for this environment:
+- All mutations route through the executor — no direct system calls from fault functions
+- Non-reversible faults (those with `IsReversible: false`) require binary rebuild and `ResetTier: R3`; the current non-reversible faults are listed in `fault-model.md` §7.2 — see the `IsReversible` field
+- Faults requiring operator confirmation before application are listed in `fault-model.md` §7.2 — see the `RequiresConfirmation` field
+- Standard precondition for all faults: state MUST be CONFORMANT (see `fault-model.md` §5.1)
 
-These characteristics are designed to serve as the starting point for the networking and TLS problem sets.
+---
+
+## 13.5 — Executor Contract (reference)
+
+The executor is the single mutation layer. Full behavioral contract, audit obligations, and privilege model: `control-plane-contract.md` §5.
+
+Key properties:
+- Every executor operation produces an audit log entry at `/var/lib/lab/audit.log` before execution completes
+- The audit log is append-only and survives all reset tiers including R3
+- All privileged operations use `devuser`'s existing sudo grant — no credential storage
+
+---
+
+## 13.6 — State Memory Model (reference)
+
+Control-plane memory at `/var/lib/lab/state.json`. Full schema, atomic write requirement, lock relationship, and corruption recovery: `control-plane-contract.md` §6.
+
+Key properties:
+- `state.json` ownership: `root:root`, mode `644`
+- Atomic writes via temp file + rename (see §12.14 for the Go atomic write pattern)
+- `active_fault` is non-null if and only if state is DEGRADED
+- `classification_valid: false` when control-plane certainty is lost (interrupt recovery)
+- History is a bounded ring buffer; see `control-plane-contract.md` §6.1 for the buffer limit
+
+---
+
+## 13.7 — Output Model (reference)
+
+All commands produce output through a structured internal model rendered to human-readable or JSON format. Full output schemas: `control-plane-contract.md` §4 (per-command JSON schemas).
+
+Key properties:
+- `--json` flag: emit JSON to stdout; human output is default
+- stdout carries command output only; stderr carries diagnostics only — never mixed
+- JSON schemas are stable (version-controlled); human-readable formatting is implementation-defined
+
+---
+
+## 13.8 — Repository Layout
+
+The companion repository (`lab-env/`) MUST conform to this layout. The `lab` binary is built from the module root.
+
+```
+lab-env/
+├── main.go              # entry point: instantiates App and calls Execute()
+├── app.go               # cobra command tree, App struct, flag definitions
+├── go.mod               # module: github.com/lab-env/lab
+├── go.sum
+├── cmd/
+│   ├── status.go        # lab status command
+│   ├── validate.go      # lab validate command
+│   ├── fault.go         # lab fault {list,info,apply} commands
+│   ├── reset.go         # lab reset command
+│   └── history.go       # lab history command
+├── internal/
+│   ├── state/
+│   │   ├── state.go     # State type and valid state set
+│   │   ├── store.go     # state.json atomic read/write
+│   │   └── detect.go    # runtime re-detection algorithm
+│   ├── executor/
+│   │   ├── executor.go  # Executor interface
+│   │   ├── real.go      # real system mutations via sudo
+│   │   ├── audit.go     # audit log writer
+│   │   └── lock.go      # mutation lock (/var/lib/lab/lab.lock)
+│   ├── conformance/
+│   │   ├── catalog.go   # 23-check catalog (S/P/E/F/L series)
+│   │   ├── check.go     # Check type and severity enum
+│   │   ├── observer.go  # Observer interface
+│   │   ├── runner.go    # suite runner with dependency ordering
+│   │   └── result.go    # SuiteResult and Classification types
+│   ├── catalog/
+│   │   ├── fault.go     # FaultDef and FaultImpl types
+│   │   └── faults.go    # 16-fault catalog (F-001–F-010, F-013–F-018)
+│   ├── output/
+│   │   ├── model.go     # result types (StatusResult, ValidateResult, etc.)
+│   │   └── render.go    # human and JSON renderers
+│   └── invariants/      # compile-time architecture invariant tests
+├── testdata/
+│   └── golden/          # golden JSON fixtures for output regression tests
+├── service/             # Go HTTP service (separate module: github.com/lab-env/service)
+├── scripts/
+│   ├── bootstrap.sh     # provisions the environment
+│   ├── validate.sh      # thin wrapper: exec lab validate "$@"
+│   ├── reset.sh         # thin wrapper: exec lab reset "$@"
+│   └── run-fault-matrix.sh  # iterates all 14 reversible faults
+└── docs/                # operational documentation
+```
+
+The shell scripts (`validate.sh`, `reset.sh`) are thin wrappers that delegate to the `lab` binary. Once the binary exists, all operations SHOULD use `lab` directly.
+
+**Build:** the bootstrap script compiles the `lab` binary during provisioning:
+
+```bash
+cd /opt/lab-env && go build -o /usr/local/bin/lab .
+```
+
+The binary is owned by `root:root`, mode `755`, installed at `/usr/local/bin/lab`.
 
 ---
 
 *End of Specification.*
-*Spec version: v1.4.0*
-*A conformant environment is one where all blocking conformance checks pass. Faults are documented in §7, baseline behaviors in Appendix A.*
+*Spec version: v1.0.0*
+*A conformant environment is one where all blocking conformance checks pass. See `conformance-model.md` §3 for the authoritative check catalog.*
