@@ -23,7 +23,7 @@ The system's primary claim is behavioral: any valid input sequence produces a pr
 
 ## Requirements
 
-- **OS:** Ubuntu 22.04 LTS (amd64)
+- **OS:** Ubuntu 22.04 LTS 
 - **Go:** 1.21 or later (service module requires 1.22 for `math/rand/v2`)
 - **cgroup v2** (required for MemoryMax enforcement on F-008/F-014):
   ```bash
