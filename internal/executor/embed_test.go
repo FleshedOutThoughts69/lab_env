@@ -20,8 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"lab-env/lab/internal/config"
-	"lab-env/lab/internal/executor"
+	"lab_env/internal/config"
 )
 
 // TestEmbeddedFiles_NonEmpty verifies that each embedded canonical file has
@@ -35,7 +34,7 @@ func TestEmbeddedFiles_NonEmpty(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			entry, ok := executor.CanonicalFileEntry(path)
+			entry, ok := CanonicalFileEntry(path)
 			if !ok {
 				t.Fatalf("no canonical entry for %s; go:embed may have failed", path)
 			}
@@ -48,19 +47,14 @@ func TestEmbeddedFiles_NonEmpty(t *testing.T) {
 
 // TestEmbeddedConfigYaml_IsValidYAML verifies that the embedded config.yaml
 // contains valid YAML with the expected top-level keys.
-//
-// A corrupted or accidentally overwritten config.yaml embedded at build time
-// would cause every R2 reset to install a broken config, making the service
-// permanently unbootable until a binary rebuild.
 func TestEmbeddedConfigYaml_ContainsRequiredKeys(t *testing.T) {
-	entry, ok := executor.CanonicalFileEntry(config.ConfigPath)
+	entry, ok := CanonicalFileEntry(config.ConfigPath)
 	if !ok {
 		t.Fatal("no canonical entry for config.yaml")
 	}
 
 	content := string(entry.Content)
 
-	// Must contain the server.addr key
 	if !strings.Contains(content, "addr:") {
 		t.Error("embedded config.yaml missing 'addr:' key")
 	}
@@ -74,12 +68,8 @@ func TestEmbeddedConfigYaml_ContainsRequiredKeys(t *testing.T) {
 
 // TestEmbeddedAppService_ContainsRequiredDirectives verifies the embedded
 // app.service systemd unit has the mandatory directives.
-//
-// A unit file missing ExecStart, User, or RuntimeDirectory would cause the
-// service to fail to start or run as the wrong user — a conformance failure
-// that would not be obvious from the systemd error message alone.
 func TestEmbeddedAppService_ContainsRequiredDirectives(t *testing.T) {
-	entry, ok := executor.CanonicalFileEntry(config.UnitFilePath)
+	entry, ok := CanonicalFileEntry(config.UnitFilePath)
 	if !ok {
 		t.Fatal("no canonical entry for app.service")
 	}
@@ -103,12 +93,8 @@ func TestEmbeddedAppService_ContainsRequiredDirectives(t *testing.T) {
 
 // TestEmbeddedNginxConf_ContainsUpstreamBlock verifies that the embedded
 // nginx.conf contains the upstream app_backend block that F-007 targets.
-//
-// Without the upstream block, F-007's Apply function would find no match
-// for "server 127.0.0.1:8080;" and the fault would silently do nothing
-// — confirmed as a real bug fixed in a previous audit round.
 func TestEmbeddedNginxConf_ContainsUpstreamBlock(t *testing.T) {
-	entry, ok := executor.CanonicalFileEntry(config.NginxConfigPath)
+	entry, ok := CanonicalFileEntry(config.NginxConfigPath)
 	if !ok {
 		t.Fatal("no canonical entry for nginx.conf")
 	}
@@ -144,9 +130,6 @@ func TestEmbeddedNginxConf_ContainsUpstreamBlock(t *testing.T) {
 
 // TestEmbeddedFiles_ModeAndOwnershipNonEmpty verifies that the mode and
 // ownership fields in canonicalFiles are non-zero for each file.
-//
-// A zero-mode would cause RestoreFile to chmod the file to 0000 (unreadable),
-// breaking the conformance check that verifies the file's permissions.
 func TestEmbeddedFiles_ModeAndOwnershipNonEmpty(t *testing.T) {
 	paths := []string{
 		config.ConfigPath,
@@ -156,7 +139,7 @@ func TestEmbeddedFiles_ModeAndOwnershipNonEmpty(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			entry, ok := executor.CanonicalFileEntry(path)
+			entry, ok := CanonicalFileEntry(path)
 			if !ok {
 				t.Fatalf("no canonical entry for %s", path)
 			}
@@ -185,7 +168,7 @@ func TestEmbeddedFiles_NoNullBytes(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			entry, ok := executor.CanonicalFileEntry(path)
+			entry, ok := CanonicalFileEntry(path)
 			if !ok {
 				t.Fatalf("no canonical entry for %s", path)
 			}

@@ -139,8 +139,8 @@ func TestSpecIndex_DocumentsExistOnDisk(t *testing.T) {
 	root := moduleRoot(t)
 
 	// Semantic model docs live one level up from the module root
-	// (they are in /mnt/user-data/outputs/ relative to /mnt/user-data/outputs/lab-env/)
-	// In the real repo they would be at the repository root alongside lab-env/.
+	// (they are in /mnt/user-data/outputs/ relative to /mnt/user-data/outputs/lab_env/)
+	// In the real repo they would be at the repository root alongside lab_env/.
 	// We check both the module root and its parent.
 	searchDirs := []string{
 		root,

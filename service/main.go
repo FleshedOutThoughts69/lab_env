@@ -50,12 +50,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lab-env/service/chaos"
-	"github.com/lab-env/service/config"
-	"github.com/lab-env/service/logging"
-	"github.com/lab-env/service/server"
-	"github.com/lab-env/service/signals"
-	"github.com/lab-env/service/telemetry"
+	"lab_env/service/chaos"
+	"lab_env/service/config"
+	"lab_env/service/logging"
+	"lab_env/service/server"
+	"lab_env/service/signals"
+	"lab_env/service/telemetry"
 )
 
 const (

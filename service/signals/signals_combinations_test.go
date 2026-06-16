@@ -1,4 +1,4 @@
-package state
+package signals_test
 
 // signal_combinations_test.go
 //
@@ -21,8 +21,8 @@ package state
 import (
 	"testing"
 
-	"lab-env/lab/internal/conformance"
-	"lab-env/lab/internal/state"
+	"lab_env/internal/conformance"
+	"lab_env/internal/state"
 )
 
 // ── Telemetry schema tolerance ────────────────────────────────────────────────

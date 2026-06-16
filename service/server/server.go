@@ -39,9 +39,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/lab-env/service/logging"
-	"github.com/lab-env/service/signals"
-	"github.com/lab-env/service/telemetry"
+	"lab_env/service/logging"
+	"lab_env/service/signals"
+	"lab_env/service/telemetry"
 )
 
 const (

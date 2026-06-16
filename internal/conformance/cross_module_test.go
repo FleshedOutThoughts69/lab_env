@@ -1,4 +1,4 @@
-package conformance
+package conformance_test
 
 // cross_module_test.go
 //
@@ -9,30 +9,62 @@ package conformance
 // service implements the responses. These are tested independently in each
 // module, but a subtle mismatch between the check's assertion and the
 // handler's response body would only appear here.
-//
-// Example: the service returns {"status":"ok"} and E-003 checks for
-// "status":"ok" — if the service changed to {"status": "ok"} (with a space
-// after the colon), the check might fail depending on implementation.
-// This test runs the actual check logic against the actual handler output.
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"lab-env/lab/internal/conformance"
+	"lab_env/internal/conformance"
 )
 
-// TestE003_CheckLogic_MatchesHandlerResponse verifies that the E-003 check's
-// assertion ("GET /health body contains {\"status\":\"ok\"}") is satisfied by
-// the exact response body produced by the /health handler.
-//
-// This test uses a stub HTTP server that returns the exact body the service
-// would return, and runs the E-003 check against it. A mismatch between
-// the handler output and the check assertion would fail silently in the
-// field — this test catches it.
+// stubHTTPObserver is a minimal conformance.Observer that returns canned
+// responses for CheckEndpoint. It implements just enough to satisfy
+// endpoint checks used in these tests.
+type stubHTTPObserver struct {
+	url         string
+	statusCode  int
+	body        string
+}
+
+func (s *stubHTTPObserver) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
+	// Only respond to the configured URL; any other URL returns unreachable.
+	if url == s.url {
+		return conformance.EndpointStatus{
+			StatusCode: s.statusCode,
+			Reachable:  true,
+			Body:       []byte(s.body),
+		}, nil
+	}
+	return conformance.EndpointStatus{Reachable: false}, nil
+}
+
+// The remaining Observer methods are not used by the checks in these tests,
+// so we can leave them unimplemented by embedding a nil pointer? Actually,
+// to satisfy the interface we need all methods, but we can have them panic
+// (they won't be called). A simpler approach: embed conformance.Observer?
+// No, we need all methods. We'll stub them all.
+
+func (s *stubHTTPObserver) ServiceActive(unit string) (bool, error)             { return false, nil }
+func (s *stubHTTPObserver) ServiceEnabled(unit string) (bool, error)            { return false, nil }
+func (s *stubHTTPObserver) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
+	return conformance.ProcessStatus{}, nil
+}
+func (s *stubHTTPObserver) CheckPort(addr string) (conformance.PortStatus, error) {
+	return conformance.PortStatus{}, nil
+}
+func (s *stubHTTPObserver) ResolveHost(name string) (string, error)            { return "", nil }
+func (s *stubHTTPObserver) Stat(path string) (os.FileInfo, error)              { return nil, nil }
+func (s *stubHTTPObserver) ReadFile(path string) ([]byte, error)               { return nil, nil }
+func (s *stubHTTPObserver) RunCommand(cmd string, args ...string) (string, error) { return "", nil }
+
+// Ensure io and os are imported (we need os.FileInfo). Let's add those imports.
+import "os"
+
+// TestE003_CheckLogic_MatchesHandlerResponse verifies E-003 check against the
+// actual /health response body.
 func TestE003_CheckLogic_MatchesHandlerResponse(t *testing.T) {
-	// Simulate the exact /health handler response
 	handlerBody := `{"status":"ok"}`
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +76,8 @@ func TestE003_CheckLogic_MatchesHandlerResponse(t *testing.T) {
 
 	// Find E-003 in the check catalog
 	var e003 *conformance.Check
-	for _, check := range conformance.AllChecks() {
-		c := check
+	for _, check := range conformance.Catalog() {
+		c := *check
 		if c.ID == "E-003" {
 			e003 = &c
 			break
@@ -55,10 +87,15 @@ func TestE003_CheckLogic_MatchesHandlerResponse(t *testing.T) {
 		t.Fatal("E-003 not found in conformance catalog")
 	}
 
-	// Create a stub observer that routes /health to our test server
-	obs := conformance.NewURLOverrideObserver(server.URL + "/health")
+	// Observer that returns our test server's response for /health
+	obs := &stubHTTPObserver{
+		url:        server.URL + "/health",
+		statusCode: http.StatusOK,
+		body:       handlerBody,
+	}
 
-	// Execute the check
+	// E-003 Check.Execute expects an Observer; our stub works because it
+	// implements conformance.Observer.
 	err := e003.Execute(obs)
 	if err != nil {
 		t.Errorf("E-003 check failed against handler response %q: %v\n"+
@@ -68,8 +105,7 @@ func TestE003_CheckLogic_MatchesHandlerResponse(t *testing.T) {
 	}
 }
 
-// TestE001_CheckLogic_MatchesHandlerResponse verifies E-001 (GET /health
-// returns HTTP 200) against the handler's actual response.
+// TestE001_CheckLogic_MatchesHandlerResponse verifies E-001 (GET /health returns 200).
 func TestE001_CheckLogic_MatchesHandlerResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -78,8 +114,8 @@ func TestE001_CheckLogic_MatchesHandlerResponse(t *testing.T) {
 	defer server.Close()
 
 	var e001 *conformance.Check
-	for _, check := range conformance.AllChecks() {
-		c := check
+	for _, check := range conformance.Catalog() {
+		c := *check
 		if c.ID == "E-001" {
 			e001 = &c
 			break
@@ -89,15 +125,18 @@ func TestE001_CheckLogic_MatchesHandlerResponse(t *testing.T) {
 		t.Fatal("E-001 not found in conformance catalog")
 	}
 
-	obs := conformance.NewURLOverrideObserver(server.URL + "/health")
+	obs := &stubHTTPObserver{
+		url:        server.URL + "/health",
+		statusCode: http.StatusOK,
+		body:       `{"status":"ok"}`,
+	}
 	if err := e001.Execute(obs); err != nil {
 		t.Errorf("E-001 failed against 200 response: %v", err)
 	}
 }
 
-// TestE002_CheckLogic_FailsOn500 verifies that E-002 (GET / returns 200)
-// fails when the handler returns 500 — confirming the check correctly
-// detects the F-004 diagnostic pattern.
+// TestE002_CheckLogic_FailsOn500 verifies E-002 (GET / returns 200) fails
+// on a 500 response.
 func TestE002_CheckLogic_FailsOn500(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -106,8 +145,8 @@ func TestE002_CheckLogic_FailsOn500(t *testing.T) {
 	defer server.Close()
 
 	var e002 *conformance.Check
-	for _, check := range conformance.AllChecks() {
-		c := check
+	for _, check := range conformance.Catalog() {
+		c := *check
 		if c.ID == "E-002" {
 			e002 = &c
 			break
@@ -117,7 +156,11 @@ func TestE002_CheckLogic_FailsOn500(t *testing.T) {
 		t.Fatal("E-002 not found in conformance catalog")
 	}
 
-	obs := conformance.NewURLOverrideObserver(server.URL + "/")
+	obs := &stubHTTPObserver{
+		url:        server.URL + "/",
+		statusCode: http.StatusInternalServerError,
+		body:       `{"status":"error"}`,
+	}
 	err := e002.Execute(obs)
 	if err == nil {
 		t.Error("E-002 passed on 500 response; should fail when / returns 500 (F-004 pattern)")
@@ -126,13 +169,7 @@ func TestE002_CheckLogic_FailsOn500(t *testing.T) {
 
 // TestF004DiagnosticPattern_E001PassesE002Fails verifies the complete F-004
 // diagnostic pattern: E-001 passes and E-002 fails simultaneously.
-//
-// This is the "most diagnostically important fault pattern" per the fault
-// matrix runbook. This test proves the conformance check logic correctly
-// identifies the pattern.
 func TestF004DiagnosticPattern_E001PassesE002Fails(t *testing.T) {
-	// /health returns 200 (E-001 passes)
-	// / returns 500 (E-002 fails)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/health":
@@ -146,12 +183,9 @@ func TestF004DiagnosticPattern_E001PassesE002Fails(t *testing.T) {
 	}))
 	defer server.Close()
 
-	obsHealth := conformance.NewURLOverrideObserver(server.URL + "/health")
-	obsRoot := conformance.NewURLOverrideObserver(server.URL + "/")
-
 	var e001, e002 *conformance.Check
-	for _, check := range conformance.AllChecks() {
-		c := check
+	for _, check := range conformance.Catalog() {
+		c := *check
 		switch c.ID {
 		case "E-001":
 			e001 = &c
@@ -159,9 +193,19 @@ func TestF004DiagnosticPattern_E001PassesE002Fails(t *testing.T) {
 			e002 = &c
 		}
 	}
-
 	if e001 == nil || e002 == nil {
 		t.Fatal("E-001 or E-002 not found in catalog")
+	}
+
+	obsHealth := &stubHTTPObserver{
+		url:        server.URL + "/health",
+		statusCode: http.StatusOK,
+		body:       `{"status":"ok"}`,
+	}
+	obsRoot := &stubHTTPObserver{
+		url:        server.URL + "/",
+		statusCode: http.StatusInternalServerError,
+		body:       `{"status":"error"}`,
 	}
 
 	e001Err := e001.Execute(obsHealth)

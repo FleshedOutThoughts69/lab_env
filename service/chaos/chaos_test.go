@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lab-env/service/chaos"
+	"lab_env/service/chaos"
 )
 
 // TestChaosHandler_Latency_ExemptedForHealth verifies that CHAOS_LATENCY_MS

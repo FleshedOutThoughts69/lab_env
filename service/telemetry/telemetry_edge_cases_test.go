@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lab-env/service/telemetry"
+	"lab_env/service/telemetry"
 )
 
 // TestCollector_UptimeSeconds_Monotonicallyincreasing verifies that consecutive

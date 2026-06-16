@@ -13,9 +13,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lab-env/service/logging"
-	"github.com/lab-env/service/server"
-	"github.com/lab-env/service/telemetry"
+	"lab_env/service/logging"
+	"lab_env/service/server"
+	"lab_env/service/telemetry"
 )
 
 // TestHandleRoot_EmptyAppEnv_ReturnsEmptyStringNotNull verifies that when

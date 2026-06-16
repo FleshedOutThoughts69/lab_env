@@ -9,9 +9,9 @@ package invariants_test
 import (
 	"testing"
 
-	"lab-env/lab/internal/catalog"
-	"lab-env/lab/internal/conformance"
-	"lab-env/lab/internal/state"
+	"lab_env/internal/catalog"
+	"lab_env/internal/conformance"
+	"lab_env/internal/state"
 )
 
 // ── fault-model.md × conformance-model.md ────────────────────────────────────

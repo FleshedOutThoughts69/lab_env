@@ -1,6 +1,6 @@
 [Unit]
 Description=Lab environment subject application
-Documentation=https://github.com/lab-env/lab
+Documentation=https://github.com/lab_env/lab
 After=network.target
 Wants=network.target
 

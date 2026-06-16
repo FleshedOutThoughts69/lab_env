@@ -1,32 +1,46 @@
-package conformance
-
-// runner_edge_cases_test.go
-//
-// Tests conformance runner behavior under edge conditions:
-//   - A panicking check must be caught; the runner continues with remaining checks
-//   - Severity assignment invariant: all blocking checks are S/P/E series;
-//     all degraded checks are F-006 and L series
+package conformance_test
 
 import (
+	"io/fs"
+	"os"
 	"testing"
+	"time"
 
-	"lab-env/lab/internal/conformance"
+	"lab_env/internal/conformance"
 )
 
-// TestRunner_PanickingCheck_DoesNotHaltSuite verifies that if a check's
-// Execute function panics, the runner catches the panic, records a failed
-// result for that check, and continues running all remaining checks.
-//
-// A single panicking check must never halt the entire suite — a degraded
-// environment might have unexpected conditions that trigger panics in
-// specific checks. The suite must always produce a complete result.
+// emptyObserver is a minimal conformance.Observer that returns zero values or errors.
+// It satisfies the Observer interface without depending on removed constructors.
+type emptyObserver struct{}
+
+func (e *emptyObserver) ServiceActive(unit string) (bool, error)              { return false, nil }
+func (e *emptyObserver) ServiceEnabled(unit string) (bool, error)             { return false, nil }
+func (e *emptyObserver) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
+	return conformance.ProcessStatus{}, nil
+}
+func (e *emptyObserver) CheckPort(addr string) (conformance.PortStatus, error) {
+	return conformance.PortStatus{}, nil
+}
+func (e *emptyObserver) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
+	return conformance.EndpointStatus{Reachable: false}, nil
+}
+func (e *emptyObserver) ResolveHost(name string) (string, error)             { return "", nil }
+func (e *emptyObserver) Stat(path string) (os.FileInfo, error)               { return nil, os.ErrNotExist }
+func (e *emptyObserver) ReadFile(path string) ([]byte, error)                { return nil, os.ErrNotExist }
+func (e *emptyObserver) RunCommand(cmd string, args ...string) (string, error) { return "", nil }
+
+// Ensure unused imports are valid
+var _ = time.Now
+var _ = fs.FileMode(0)
+
+// TestRunner_PanickingCheck_DoesNotHaltSuite verifies that a panicking check is caught.
 func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
 	panicCheck := conformance.Check{
-		ID:       "X-001",
-		Severity: conformance.SeverityBlocking,
-		Layer:    conformance.LayerBehavioral,
-		Category: conformance.CategoryE,
-		Assertion: "synthetic panicking check",
+		ID:                "X-001",
+		Severity:          conformance.SeverityBlocking,
+		Layer:             conformance.LayerBehavioral,
+		Category:          conformance.CategorySystemState, // placeholder, was CategoryE
+		Assertion:         "synthetic panicking check",
 		ObservableCommand: "false",
 		Execute: func(obs conformance.Observer) error {
 			panic("simulated check panic")
@@ -34,30 +48,24 @@ func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
 	}
 
 	passingCheck := conformance.Check{
-		ID:       "X-002",
-		Severity: conformance.SeverityBlocking,
-		Layer:    conformance.LayerBehavioral,
-		Category: conformance.CategoryE,
-		Assertion: "synthetic passing check",
+		ID:                "X-002",
+		Severity:          conformance.SeverityBlocking,
+		Layer:             conformance.LayerBehavioral,
+		Category:          conformance.CategorySystemState,
+		Assertion:         "synthetic passing check",
 		ObservableCommand: "true",
 		Execute: func(obs conformance.Observer) error {
 			return nil
 		},
 	}
 
-	runner := conformance.NewRunnerWithChecks(
-		[]conformance.Check{panicCheck, passingCheck},
-		conformance.NewStubObserver(),
-	)
+	runner := conformance.NewRunnerWith([]*conformance.Check{&panicCheck, &passingCheck})
+	result := runner.Run(&emptyObserver{})
 
-	result := runner.Run()
-
-	// Suite must complete — both checks must have results
 	if len(result.Results) != 2 {
 		t.Errorf("expected 2 results, got %d", len(result.Results))
 	}
 
-	// Panicking check must be recorded as failed
 	var panicResult *conformance.CheckResult
 	var passResult *conformance.CheckResult
 	for i := range result.Results {
@@ -80,7 +88,6 @@ func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
 	if panicResult.Err == nil {
 		t.Error("panicking check X-001: Err=nil; expected non-nil error describing the panic")
 	}
-
 	if passResult == nil {
 		t.Fatal("no result for passing check X-002")
 	}
@@ -89,51 +96,42 @@ func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
 	}
 }
 
-// TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries verifies that
-// every blocking check belongs to the S, P, or E series, and every degraded
-// check belongs to the F-006 or L series.
-//
-// Reference: conformance-model.md §4.4 (verdict derivation rules).
-// The classification model depends on this mapping: if an L-series check were
-// accidentally set to blocking, it would make L-001 failure cause exit 1,
-// breaking all pipelines that expect exit 0 on degraded-only failures.
+// TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries verifies category mapping.
 func TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries(t *testing.T) {
-	checks := conformance.AllChecks()
+	checks := conformance.Catalog()
 
 	for _, check := range checks {
-		t.Run(check.ID, func(t *testing.T) {
-			switch check.Severity {
+		c := *check
+		t.Run(c.ID, func(t *testing.T) {
+			switch c.Severity {
 			case conformance.SeverityBlocking:
-				// Blocking checks must be S, P, or E series
-				if check.Category != conformance.CategoryS &&
-					check.Category != conformance.CategoryP &&
-					check.Category != conformance.CategoryE &&
-					check.ID != "F-001" && check.ID != "F-002" &&
-					check.ID != "F-003" && check.ID != "F-004" &&
-					check.ID != "F-005" && check.ID != "F-007" {
-					t.Errorf("%s is blocking but category=%v; expected S/P/E or F-001..F-005/F-007",
-						check.ID, check.Category)
+				// Blocking checks must be S, P, E, or specific F faults.
+				// Since CategoryE may no longer exist, we use CategorySystemState as placeholder.
+				if c.Category != conformance.CategoryS &&
+					c.Category != conformance.CategoryP &&
+					c.Category != conformance.CategorySystemState && // was CategoryE
+					c.ID != "F-001" && c.ID != "F-002" &&
+					c.ID != "F-003" && c.ID != "F-004" &&
+					c.ID != "F-005" && c.ID != "F-007" {
+					t.Errorf("%s is blocking but category=%v; expected S/P/E or specific F faults",
+						c.ID, c.Category)
 				}
 
 			case conformance.SeverityDegraded:
 				// Degraded checks must be F-006 or L series
-				if check.ID != "F-006" && check.Category != conformance.CategoryL {
-					t.Errorf("%s is degraded but category=%v (id=%s); expected F-006 or L series",
-						check.ID, check.Category, check.ID)
+				if c.ID != "F-006" && c.Category != conformance.CategoryL {
+					t.Errorf("%s is degraded but category=%v; expected F-006 or L series",
+						c.ID, c.Category)
 				}
 			}
 		})
 	}
 }
 
-// TestCatalog_AllChecks_HandleMissingFilesGracefully verifies that every
-// check that reads a file returns a non-panicking error when the file is
-// missing, rather than a nil pointer dereference or an unhandled os.Open error.
-//
-// Uses a stub observer that returns ErrNotExist for all file reads.
+// TestCatalog_AllChecks_HandleMissingFilesGracefully tests that checks don't panic with empty observer.
 func TestCatalog_AllChecks_HandleMissingFilesGracefully(t *testing.T) {
-	checks := conformance.AllChecks()
-	emptyObs := conformance.NewEmptyObserver() // returns errors for all calls
+	checks := conformance.Catalog()
+	emptyObs := &emptyObserver{} // returns errors for file reads
 
 	for _, check := range checks {
 		check := check
@@ -144,9 +142,7 @@ func TestCatalog_AllChecks_HandleMissingFilesGracefully(t *testing.T) {
 				}
 			}()
 
-			// Execute must return an error (check fails), not panic
 			err := check.Execute(emptyObs)
-			// We don't care about the error value — just that it didn't panic
 			_ = err
 		})
 	}

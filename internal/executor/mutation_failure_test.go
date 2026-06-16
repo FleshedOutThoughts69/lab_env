@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"lab-env/lab/internal/executor"
+	"lab_env/internal/executor"
 )
 
 // TestRunMutation_NonZeroExit_WritesAuditErrorEntry verifies that when a
@@ -29,15 +29,12 @@ func TestRunMutation_NonZeroExit_WritesAuditErrorEntry(t *testing.T) {
 	dir := t.TempDir()
 	auditPath := filepath.Join(dir, "audit.log")
 
-	logger, err := executor.NewAuditLogger(auditPath)
-	if err != nil {
-		t.Fatalf("NewAuditLogger: %v", err)
-	}
+	logger := executor.NewAuditLoggerAt(auditPath, "test")
 
 	// Simulate a mutation that failed with a non-zero exit code.
 	// The audit logger must record this regardless of the error.
 	mutationErr := errors.New("exit status 1: chmod: cannot operate on dangling symlink")
-	logger.LogError("RunMutation", "chmod 000 /opt/app/server", mutationErr)
+	logger.LogError("RunMutation", mutationErr.Error())
 
 	data, err := os.ReadFile(auditPath)
 	if err != nil {

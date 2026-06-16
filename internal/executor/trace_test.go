@@ -20,8 +20,6 @@ package executor
 import (
 	"os"
 	"testing"
-
-	"lab-env/lab/internal/executor"
 )
 
 // TraceEvent represents one recorded operation in the execution trace.
@@ -51,10 +49,7 @@ func TestOperationalTrace_FaultApply_SequenceIsCorrect(t *testing.T) {
 	statePath := dir + "/state.json"
 
 	// Create an audit logger
-	logger, err := executor.NewAuditLogger(auditPath)
-	if err != nil {
-		t.Fatalf("NewAuditLogger: %v", err)
-	}
+	logger := NewAuditLoggerAt(auditPath, "test")
 
 	// Create a trace-recording executor
 	rec := &operationTracer{events: nil}
@@ -72,7 +67,7 @@ func TestOperationalTrace_FaultApply_SequenceIsCorrect(t *testing.T) {
 	rec.record("obs", "LightweightRun")
 
 	// 4. [audit] — log executor operation before mutation
-	logger.LogOp("Apply", "F-004")
+	logger.LogOp("Apply", "F-004", 0, 0, nil)
 	rec.record("audit", "LogOp:Apply")
 
 	// 5. [mut] — execute the fault Apply

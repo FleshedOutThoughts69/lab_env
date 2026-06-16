@@ -23,7 +23,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lab-env/service/logging"
+	"lab_env/service/logging"
 )
 
 // TestNew_OpensWithOAppend verifies that the log file is opened with O_APPEND.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lab-env/service/chaos"
+	"lab_env/service/chaos"
 )
 
 // TestChaosHandler_Drop100_PassesHealth verifies that even at 100% drop rate,

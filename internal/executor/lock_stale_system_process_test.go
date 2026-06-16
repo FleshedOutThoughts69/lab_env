@@ -1,4 +1,4 @@
-package executor
+package executor_test
 
 // lock_stale_system_process_test.go
 //
@@ -19,20 +19,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"lab-env/lab/internal/executor"
+	"lab_env/internal/executor"
 )
 
 // TestLock_StaleLockWithForeignPID_IsReclaimed verifies that a lock file
 // containing the PID of a running system process (not a lab CLI) is treated
 // as stale and can be reclaimed.
-//
-// The lock file correctly identifies a live process (kill -0 succeeds), but
-// that process is not the lab CLI. The lock must be reclaimable, otherwise
-// any PID collision permanently blocks lab operations.
-//
-// NOTE: This test uses PID 1 (init/systemd) as the "foreign" process. PID 1
-// is always running on Linux. If the lock implementation only checks liveness
-// (not process identity), this test will FAIL — which is the bug being caught.
 func TestLock_StaleLockWithForeignPID_IsReclaimed(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "lab.lock")
@@ -44,7 +36,7 @@ func TestLock_StaleLockWithForeignPID_IsReclaimed(t *testing.T) {
 
 	// Attempt to acquire the lock — should succeed because PID 1 is not
 	// a lab CLI instance
-	lock := executor.NewLock(lockPath)
+	lock := executor.NewLock()
 	if err := lock.Acquire(); err != nil {
 		t.Errorf("lock.Acquire() with foreign PID 1: got error %v\n"+
 			"This means a PID collision with a system process would permanently block lab operations.\n"+
@@ -67,24 +59,18 @@ func TestLock_StaleLockWithForeignPID_IsReclaimed(t *testing.T) {
 
 // TestLock_StaleLockWithCurrentPID_DoesNotSelfDeadlock verifies that a lock
 // file containing the current process's own PID can be reclaimed.
-//
-// This could happen if the process crashed and restarted with the same PID
-// (unusual but possible in containerized environments). The process must not
-// deadlock waiting for itself.
 func TestLock_StaleLockWithCurrentPID_IsReclaimed(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "lab.lock")
 
 	// Write a lock with the current PID — simulates crash+restart same PID
-	if err := os.WriteFile(lockPath, fmt.Sprintf("%d\n", os.Getpid()), 0644); err != nil {
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	lock := executor.NewLock(lockPath)
+	lock := executor.NewLock()
 	err := lock.Acquire()
 	if err != nil {
-		// This is an acceptable outcome — the process sees its own PID as live
-		// and refuses to overwrite. Document the behavior.
 		t.Logf("lock.Acquire() with own PID refused: %v (acceptable — document this behavior)", err)
 		return
 	}

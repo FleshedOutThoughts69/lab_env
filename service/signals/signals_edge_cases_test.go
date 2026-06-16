@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lab-env/service/signals"
+	"lab_env/service/signals"
 )
 
 // TestBeginShutdown_WhenHealthyAlreadyRemoved verifies that calling

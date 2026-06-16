@@ -1,4 +1,4 @@
-module lab-env/service
+module lab_env/service
 
 go 1.22
 

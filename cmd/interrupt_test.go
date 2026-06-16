@@ -1,4 +1,4 @@
-package cmd
+package cmd_test
 
 // interrupt_test.go proves the interrupt-path contract as a complete
 // cross-layer behavior. control-plane-contract §3.6.
@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	
+	. "lab_env/cmd"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
 	"lab_env/internal/output"

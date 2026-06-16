@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lab-env/service/config"
+	"lab_env/service/config"
 )
 
 // TestLoad_ValidConfig_Parses verifies that a well-formed config.yaml parses

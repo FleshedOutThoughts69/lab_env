@@ -4,16 +4,15 @@ package state
 //
 // Tests state store behavior under edge cases not covered by store_test.go:
 //   - 0-byte state file treated as corruption (not "missing")
-//   - concurrent InvalidateClassification + SaveState race safety
+//   - concurrent InvalidateClassification + Write race safety
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
-
-	"lab-env/lab/internal/state"
 )
 
 // TestStore_Read_EmptyFile_ReturnsCorrupt verifies that a 0-byte state file
@@ -32,13 +31,14 @@ func TestStore_Read_EmptyFile_ReturnsCorrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := state.NewStore(path)
+	store := NewStoreAt(path)
 	_, err := store.Read()
 	if err == nil {
 		t.Fatal("Read() on 0-byte file: expected error, got nil")
 	}
-	if err != state.ErrStateFileCorrupt {
-		t.Errorf("error type: got %v, want ErrStateFileCorrupt", err)
+	var corruptErr ErrStateFileCorrupt
+	if !errors.As(err, &corruptErr) {
+		t.Errorf("error type: got %T (%v), want ErrStateFileCorrupt", err, err)
 	}
 }
 
@@ -52,20 +52,21 @@ func TestStore_Read_WhitespaceOnly_ReturnsCorrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := state.NewStore(path)
+	store := NewStoreAt(path)
 	_, err := store.Read()
-	if err != state.ErrStateFileCorrupt {
-		t.Errorf("whitespace-only file: got %v, want ErrStateFileCorrupt", err)
+	var corruptErr ErrStateFileCorrupt
+	if !errors.As(err, &corruptErr) {
+		t.Errorf("whitespace-only file: got %T (%v), want ErrStateFileCorrupt", err, err)
 	}
 }
 
 // TestStore_Concurrent_InvalidateAndSave verifies that concurrent calls to
-// InvalidateClassification and SaveState do not produce a corrupt state file
+// InvalidateClassification and Write do not produce a corrupt state file
 // or a state where classification_valid is incorrectly true after invalidation.
 //
-// Scenario: lab status is running (reads + saves) while a SIGINT arrives
+// Scenario: lab status is running (reads + writes) while a SIGINT arrives
 // (invalidates). The final state must have classification_valid = false,
-// not stale true from a SaveState that raced with invalidation.
+// not stale true from a Write that raced with invalidation.
 //
 // This test is a data-race detector test: run with -race to detect races.
 // Even without -race, it verifies the final semantic state.
@@ -73,20 +74,17 @@ func TestStore_Concurrent_InvalidateAndSave(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
-	store := state.NewStore(path)
+	store := NewStoreAt(path)
 
 	// Initialize with a valid conformant state
-	initial := state.Fresh()
-	initial.State = state.StateConformant
+	initial := Fresh(StateConformant)
 	initial.ClassificationValid = true
-	if err := store.Save(initial); err != nil {
-		t.Fatalf("initial Save: %v", err)
+	if err := store.Write(initial); err != nil {
+		t.Fatalf("initial Write: %v", err)
 	}
 
 	const iterations = 100
 	var wg sync.WaitGroup
-	invalidateCount := 0
-	saveCount := 0
 
 	// Goroutine 1: repeatedly call InvalidateClassification (interrupt simulator)
 	wg.Add(1)
@@ -96,30 +94,32 @@ func TestStore_Concurrent_InvalidateAndSave(t *testing.T) {
 			if err := store.InvalidateClassification(); err != nil {
 				t.Errorf("InvalidateClassification: %v", err)
 			}
-			invalidateCount++
 			time.Sleep(time.Microsecond)
 		}
 	}()
 
-	// Goroutine 2: repeatedly call SaveState with classification_valid=true (status simulator)
+	// Goroutine 2: repeatedly write classification_valid=true (status simulator)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
 			f, err := store.Read()
-			if err != nil && err != state.ErrStateFileCorrupt && err != state.ErrStateFileNotFound {
-				t.Errorf("Read: %v", err)
+			if err != nil {
+				var corruptErr ErrStateFileCorrupt
+				var notFoundErr ErrStateFileNotFound
+				if !errors.As(err, &corruptErr) && !errors.As(err, &notFoundErr) {
+					t.Errorf("Read: %v", err)
+				}
 				continue
 			}
 			if f == nil {
-				f = state.Fresh()
+				f = Fresh(StateConformant)
 			}
-			f.State = state.StateConformant
+			f.State = StateConformant
 			f.ClassificationValid = true
-			if err := store.Save(f); err != nil {
-				t.Errorf("Save: %v", err)
+			if err := store.Write(f); err != nil {
+				t.Errorf("Write: %v", err)
 			}
-			saveCount++
 			time.Sleep(time.Microsecond)
 		}
 	}()
@@ -141,20 +141,19 @@ func TestStore_Concurrent_InvalidateAndSave(t *testing.T) {
 	}
 }
 
-// TestStore_Save_WhenDiskFull verifies that Save returns an error when the
-// underlying write fails, and the original state file is not corrupted.
+// TestStore_Save_ReadOnlyDir_ReturnsError verifies that Write returns an error
+// when the underlying write fails, and the original state file is not corrupted.
 //
-// Simulated by pointing the store at a read-only directory.
+// Simulated by making the directory read-only.
 func TestStore_Save_ReadOnlyDir_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write an initial valid state
 	path := filepath.Join(dir, "state.json")
-	store := state.NewStore(path)
-	initial := state.Fresh()
-	initial.State = state.StateConformant
-	if err := store.Save(initial); err != nil {
-		t.Fatalf("initial Save: %v", err)
+	store := NewStoreAt(path)
+	initial := Fresh(StateConformant)
+	if err := store.Write(initial); err != nil {
+		t.Fatalf("initial Write: %v", err)
 	}
 
 	// Make the directory read-only — temp file creation will fail
@@ -163,12 +162,11 @@ func TestStore_Save_ReadOnlyDir_ReturnsError(t *testing.T) {
 	}
 	defer os.Chmod(dir, 0755)
 
-	// Attempt to save a new state
-	updated := state.Fresh()
-	updated.State = state.StateBroken
-	err := store.Save(updated)
+	// Attempt to write a new state
+	updated := Fresh(StateBroken)
+	err := store.Write(updated)
 	if err == nil {
-		t.Fatal("Save to read-only dir: expected error, got nil")
+		t.Fatal("Write to read-only dir: expected error, got nil")
 	}
 
 	// Original file must be unchanged (still conformant)
@@ -177,9 +175,9 @@ func TestStore_Save_ReadOnlyDir_ReturnsError(t *testing.T) {
 	}
 	readBack, err := store.Read()
 	if err != nil {
-		t.Fatalf("Read after failed Save: %v", err)
+		t.Fatalf("Read after failed Write: %v", err)
 	}
-	if readBack.State != state.StateConformant {
-		t.Errorf("state after failed Save: got %v, want CONFORMANT", readBack.State)
+	if readBack.State != StateConformant {
+		t.Errorf("state after failed Write: got %v, want CONFORMANT", readBack.State)
 	}
 }

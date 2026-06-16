@@ -6,8 +6,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
-
 	"lab_env/cmd"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"

@@ -31,7 +31,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lab-env/service/logging"
+	"lab_env/service/logging"
 )
 
 // Handler wraps an http.Handler with chaos middleware.

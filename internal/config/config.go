@@ -7,7 +7,19 @@
 // and control-plane-contract.md §6 (state file paths).
 package config
 
-import "io/fs"
+import (
+	_ "embed"
+	"io/fs"
+)
+
+//go:embed config.yaml
+var EmbeddedAppConfig []byte
+
+//go:embed app.service
+var EmbeddedUnitFile []byte
+
+//go:embed nginx.conf
+var EmbeddedNginxConfig []byte
 
 // ── Control plane paths ───────────────────────────────────────────────────────
 
@@ -22,7 +34,7 @@ const (
 	LockPath = "/var/lib/lab/lab.lock"
 
 	// BootstrapScript is the provisioning script path.
-	BootstrapScript = "/opt/lab-env/bootstrap.sh"
+	BootstrapScript = "/opt/lab_env/bootstrap.sh"
 )
 
 // ── Canonical environment paths (canonical-environment.md §2.3) ──────────────

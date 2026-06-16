@@ -11,8 +11,6 @@ package state
 
 import (
 	"testing"
-
-	. "lab-env/lab/internal/state"
 )
 
 // ── State enumeration ─────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lab-env/service/signals"
+	"lab_env/service/signals"
 )
 
 // TestStartupSequence_LoadingBeforeHealthy verifies that:

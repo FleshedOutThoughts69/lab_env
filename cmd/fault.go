@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"lab-env/lab/internal/catalog"
-	"lab-env/lab/internal/conformance"
-	"lab-env/lab/internal/executor"
-	"lab-env/lab/internal/output"
-	"lab-env/lab/internal/state"
+	"lab_env/internal/catalog"
+	"lab_env/internal/conformance"
+	"lab_env/internal/executor"
+	"lab_env/internal/output"
+	"lab_env/internal/state"
 )
 
 // ── lab fault list ────────────────────────────────────────────────────────────

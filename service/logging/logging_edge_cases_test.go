@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lab-env/service/logging"
+	"lab_env/service/logging"
 )
 
 // TestLogger_SpecialChars_ProperlyEscaped verifies that log messages and

@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"lab_env/internal/conformance"
-	. "lab_env/internal/output"
 	"lab_env/internal/state"
 )
 

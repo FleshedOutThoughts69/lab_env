@@ -25,78 +25,71 @@ import (
 	"os"
 	"testing"
 
-	"lab-env/lab/internal/catalog"
-	"lab-env/lab/internal/executor"
+	"lab_env/internal/catalog"
+	"lab_env/internal/conformance"
+	"lab_env/internal/executor"
 )
 
 // TestFaultRecover_RestoresExactContent verifies that Recover(exec) for every
 // reversible fault writes the exact same bytes that would be in a conformant system.
-//
-// For faults that call exec.RestoreFile(), the content is the embedded canonical
-// bytes. For faults that write manually, we verify the content matches the
-// known-good value.
 func TestFaultRecover_RestoresExactContent(t *testing.T) {
 	impls := catalog.AllImpls()
 
 	for _, impl := range impls {
 		impl := impl
-		if !impl.IsReversible {
-			continue // non-reversible faults (F-008, F-014) have error-returning Recover stubs
+		if !impl.Def.IsReversible {
+			continue // non-reversible faults have error-returning Recover stubs
 		}
 
-		t.Run(impl.ID, func(t *testing.T) {
+		t.Run(impl.Def.ID, func(t *testing.T) {
 			rec := newFaultRecorder()
 
 			// Apply the fault — capture what it changes
 			applyErr := impl.Apply(rec)
 			if applyErr != nil && !rec.hasAnyWrite() {
-				t.Skipf("%s Apply returned error with no writes (precondition check) — skip", impl.ID)
+				t.Skipf("%s Apply returned error with no writes (precondition check) — skip", impl.Def.ID)
 			}
 
 			// Recover the fault — capture what it restores
 			recoverErr := impl.Recover(rec)
 			if recoverErr != nil {
-				t.Fatalf("%s Recover returned error: %v", impl.ID, recoverErr)
+				t.Fatalf("%s Recover returned error: %v", impl.Def.ID, recoverErr)
 			}
 
 			// For each path that Apply wrote, Recover must have written to the same path.
-			// The content written by Recover must be the canonical content for that path.
 			for path, applyHash := range rec.applyHashes {
 				recoverContent, ok := rec.recoverWrites[path]
 				if !ok {
-					t.Errorf("%s: Apply wrote to %s but Recover did not restore it", impl.ID, path)
+					t.Errorf("%s: Apply wrote to %s but Recover did not restore it", impl.Def.ID, path)
 					continue
 				}
 				recoverHash := sha256sum(recoverContent)
 
-				// Recover must NOT write the same broken content Apply wrote
 				if recoverHash == applyHash && len(recoverContent) > 0 {
 					t.Errorf("%s: Recover wrote same content as Apply for %s — fault was not undone",
-						impl.ID, path)
+						impl.Def.ID, path)
 				}
 			}
 		})
 	}
 }
 
-// TestNonReversibleFaults_RecoverReturnsError verifies that F-008 and F-014
-// Recover functions return an error directing the operator to R3 reset,
-// not nil (which would silently claim recovery succeeded).
+// TestNonReversibleFaults_RecoverReturnsError verifies that non-reversible faults
+// Recover functions return an error directing to R3 reset.
 func TestNonReversibleFaults_RecoverReturnsError(t *testing.T) {
 	for _, impl := range catalog.AllImpls() {
-		if impl.IsReversible {
+		if impl.Def.IsReversible {
 			continue
 		}
-		t.Run(impl.ID, func(t *testing.T) {
+		t.Run(impl.Def.ID, func(t *testing.T) {
 			rec := newFaultRecorder()
 			err := impl.Recover(rec)
 			if err == nil {
-				t.Errorf("%s is non-reversible but Recover() returned nil — should return error directing to R3", impl.ID)
+				t.Errorf("%s is non-reversible but Recover() returned nil — should return error directing to R3", impl.Def.ID)
 			}
-			// Error must mention R3 or reset
 			errMsg := err.Error()
 			if errMsg == "" {
-				t.Errorf("%s Recover() returned empty error message", impl.ID)
+				t.Errorf("%s Recover() returned empty error message", impl.Def.ID)
 			}
 		})
 	}
@@ -104,23 +97,18 @@ func TestNonReversibleFaults_RecoverReturnsError(t *testing.T) {
 
 // TestFaultApply_TargetsOnlyDeclaredFile verifies that Apply mutations target
 // only the file(s) associated with the fault, not unrelated config files.
-//
-// This guards against replaceInBytes calls with patterns that match multiple
-// files — e.g., a string that appears in both config.yaml and nginx.conf.
 func TestFaultApply_TargetsOnlyDeclaredFile(t *testing.T) {
 	impls := catalog.AllImpls()
 
 	for _, impl := range impls {
 		impl := impl
-		t.Run(impl.ID, func(t *testing.T) {
+		t.Run(impl.Def.ID, func(t *testing.T) {
 			rec := newFaultRecorder()
 			_ = impl.Apply(rec)
 
-			// Each fault's Apply should write to at most one or two files.
-			// More than 3 file writes is suspicious and should be investigated.
 			if len(rec.applyWrites) > 3 {
 				t.Errorf("%s Apply wrote to %d files; expected ≤3: %v",
-					impl.ID, len(rec.applyWrites), keys(rec.applyWrites))
+					impl.Def.ID, len(rec.applyWrites), keys(rec.applyWrites))
 			}
 		})
 	}
@@ -129,18 +117,11 @@ func TestFaultApply_TargetsOnlyDeclaredFile(t *testing.T) {
 // ── Recording executor ────────────────────────────────────────────────────────
 
 type faultRecorder struct {
-	// Tracks writes made during Apply
-	applyWrites map[string][]byte
-	applyHashes map[string]string
-
-	// Tracks writes made during Recover
+	applyWrites   map[string][]byte
+	applyHashes   map[string]string
 	recoverWrites map[string][]byte
-
-	// Phase tracking: are we in Apply or Recover?
-	phase string
-
-	// File system state simulation
-	files map[string][]byte
+	phase         string
+	files         map[string][]byte
 }
 
 func newFaultRecorder() *faultRecorder {
@@ -204,7 +185,7 @@ func (r *faultRecorder) Chown(path, _, _ string) error {
 func (r *faultRecorder) Remove(path string) error {
 	delete(r.files, path)
 	if r.phase == "apply" {
-		r.applyWrites[path] = nil // nil = deleted
+		r.applyWrites[path] = nil
 		r.applyHashes[path] = "deleted"
 	} else {
 		r.recoverWrites[path] = nil
@@ -214,9 +195,7 @@ func (r *faultRecorder) Remove(path string) error {
 
 func (r *faultRecorder) MkdirAll(path string, _ os.FileMode) error { return nil }
 
-func (r *faultRecorder) Systemctl(action, unit string) error {
-	return nil // no-op; service commands tracked separately if needed
-}
+func (r *faultRecorder) Systemctl(action, unit string) error { return nil }
 
 func (r *faultRecorder) NginxReload() error { return nil }
 
@@ -229,21 +208,20 @@ func (r *faultRecorder) Stat(path string) (os.FileInfo, error) {
 	}
 	return nil, os.ErrNotExist
 }
-func (r *faultRecorder) CheckProcess(_, _ string) (executor.ProcessStatus, error) {
-	return executor.ProcessStatus{Running: true}, nil
+func (r *faultRecorder) CheckProcess(_, _ string) (conformance.ProcessStatus, error) {
+	return conformance.ProcessStatus{Running: true}, nil
 }
-func (r *faultRecorder) CheckPort(_ string) (executor.PortStatus, error) {
-	return executor.PortStatus{Listening: true}, nil
+func (r *faultRecorder) CheckPort(_ string) (conformance.PortStatus, error) {
+	return conformance.PortStatus{Listening: true}, nil
 }
-func (r *faultRecorder) CheckEndpoint(_ string, _ bool) (executor.EndpointStatus, error) {
-	return executor.EndpointStatus{StatusCode: 200}, nil
+func (r *faultRecorder) CheckEndpoint(_ string, _ bool) (conformance.EndpointStatus, error) {
+	return conformance.EndpointStatus{StatusCode: 200}, nil
 }
 func (r *faultRecorder) ResolveHost(_ string) (string, error) { return "127.0.0.1", nil }
 func (r *faultRecorder) ServiceActive(_ string) (bool, error) { return true, nil }
 func (r *faultRecorder) ServiceEnabled(_ string) (bool, error) { return true, nil }
 func (r *faultRecorder) RunCommand(_ string, _ ...string) (string, error) { return "", nil }
 
-// SetPhase switches the recorder between apply and recover tracking.
 func (r *faultRecorder) SetPhase(phase string) { r.phase = phase }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -261,8 +239,6 @@ func keys(m map[string][]byte) []string {
 	return result
 }
 
-// makeDefaultFiles returns a simulated file system matching the canonical
-// environment state. Used as the starting point for Apply/Recover testing.
 func makeDefaultFiles() map[string][]byte {
 	return map[string][]byte{
 		"/opt/app/server":                  []byte("ELF binary stub"),

@@ -12,8 +12,8 @@
 package catalog
 
 import (
-	"lab-env/lab/internal/executor"
-	"lab-env/lab/internal/state"
+	"lab_env/internal/executor"
+	"lab_env/internal/state"
 )
 
 // FaultDef is the static, serializable definition of a fault.

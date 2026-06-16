@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	cfg "lab-env/lab/internal/config"
+	cfg "lab_env/internal/config"
 )
 
 // Catalog returns the complete ordered check registry as defined in

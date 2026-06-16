@@ -108,3 +108,89 @@ func (m *mockFileInfo) Mode() fs.FileMode  { return m.mode }
 func (m *mockFileInfo) ModTime() time.Time { return time.Time{} }
 func (m *mockFileInfo) IsDir() bool        { return false }
 func (m *mockFileInfo) Sys() interface{}   { return nil }
+
+// ── trackingExecutor ─────────────────────────────────────────────────────────
+// Implements executor.Executor minimally, recording calls for test assertions.
+
+type trackingExecutor struct {
+    serviceActive   map[string]bool
+    portListening   map[string]bool
+    endpointStatus  map[string]int
+    // Add other fields if needed
+}
+
+func (t *trackingExecutor) ServiceActive(unit string) (bool, error) {
+    return t.serviceActive[unit], nil
+}
+func (t *trackingExecutor) ServiceEnabled(unit string) (bool, error) {
+    return t.serviceActive[unit], nil
+}
+func (t *trackingExecutor) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
+    return conformance.ProcessStatus{Running: t.serviceActive["app.service"]}, nil
+}
+func (t *trackingExecutor) CheckPort(addr string) (conformance.PortStatus, error) {
+    return conformance.PortStatus{Listening: t.portListening[addr], Addr: addr}, nil
+}
+func (t *trackingExecutor) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
+    code, ok := t.endpointStatus[url]
+    if !ok {
+        return conformance.EndpointStatus{Reachable: false, StatusCode: 0}, nil
+    }
+    return conformance.EndpointStatus{StatusCode: code, Reachable: true}, nil
+}
+// ... implement remaining executor.Executor methods as needed; for tests they can be no-ops.
+func (t *trackingExecutor) ResolveHost(name string) (string, error) { return "127.0.0.1", nil }
+func (t *trackingExecutor) Stat(path string) (fs.FileInfo, error) { return nil, fmt.Errorf("stub") }
+func (t *trackingExecutor) ReadFile(path string) ([]byte, error) { return nil, fmt.Errorf("stub") }
+func (t *trackingExecutor) RunCommand(cmd string, args ...string) (string, error) { return "", nil }
+func (t *trackingExecutor) Systemctl(cmd, unit string) error { return nil }
+func (t *trackingExecutor) NginxReload() error { return nil }
+func (t *trackingExecutor) WriteFile(path string, content []byte, mode os.FileMode) error { return nil }
+func (t *trackingExecutor) Chmod(path string, mode os.FileMode) error { return nil }
+func (t *trackingExecutor) Chown(path, user, group string) error { return nil }
+func (t *trackingExecutor) RestoreFile(path string) error { return nil }
+func (t *trackingExecutor) RunMutation(bin string, args ...string) error { return nil }
+
+// ── injectErrorExecutor ──────────────────────────────────────────────────────
+type injectErrorExecutor struct {
+    serviceActive  map[string]bool
+    portListening  map[string]bool
+    endpointStatus map[string]int
+    // when true, certain operations return errors
+    failServiceActive bool
+}
+
+func (e *injectErrorExecutor) ServiceActive(unit string) (bool, error) {
+    if e.failServiceActive {
+        return false, fmt.Errorf("injected error")
+    }
+    return e.serviceActive[unit], nil
+}
+// implement the rest similarly, mirroring trackingExecutor
+func (e *injectErrorExecutor) ServiceEnabled(unit string) (bool, error) {
+    return e.ServiceActive(unit)
+}
+func (e *injectErrorExecutor) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
+    if e.failServiceActive {
+        return conformance.ProcessStatus{}, fmt.Errorf("injected")
+    }
+    return conformance.ProcessStatus{Running: e.serviceActive["app.service"]}, nil
+}
+func (e *injectErrorExecutor) CheckPort(addr string) (conformance.PortStatus, error) {
+    return conformance.PortStatus{Listening: e.portListening[addr], Addr: addr}, nil
+}
+func (e *injectErrorExecutor) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
+    code, _ := e.endpointStatus[url]
+    return conformance.EndpointStatus{StatusCode: code, Reachable: code != 0}, nil
+}
+func (e *injectErrorExecutor) ResolveHost(name string) (string, error) { return "127.0.0.1", nil }
+func (e *injectErrorExecutor) Stat(path string) (fs.FileInfo, error) { return nil, fmt.Errorf("stub") }
+func (e *injectErrorExecutor) ReadFile(path string) ([]byte, error) { return nil, fmt.Errorf("stub") }
+func (e *injectErrorExecutor) RunCommand(cmd string, args ...string) (string, error) { return "", nil }
+func (e *injectErrorExecutor) Systemctl(cmd, unit string) error { return nil }
+func (e *injectErrorExecutor) NginxReload() error { return nil }
+func (e *injectErrorExecutor) WriteFile(path string, content []byte, mode fs.FileMode) error { return nil }
+func (e *injectErrorExecutor) Chmod(path string, mode fs.FileMode) error { return nil }
+func (e *injectErrorExecutor) Chown(path, user, group string) error { return nil }
+func (e *injectErrorExecutor) RestoreFile(path string) error { return nil }
+func (e *injectErrorExecutor) RunMutation(bin string, args ...string) error { return nil }

@@ -23,9 +23,9 @@ import (
 
 	slog "log/slog"
 
-	"github.com/lab-env/service/logging"
-	"github.com/lab-env/service/server"
-	"github.com/lab-env/service/telemetry"
+	"lab_env/service/logging"
+	"lab_env/service/server"
+	"lab_env/service/telemetry"
 )
 
 // TestHandleHealth_Returns200_WithOKBody verifies that GET /health returns

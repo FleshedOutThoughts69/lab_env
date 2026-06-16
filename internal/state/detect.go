@@ -136,19 +136,27 @@ func reconcileFromRuntime(lr *conformance.SuiteResult, activeFault *ActiveFault,
 		if activeFault != nil {
 			// Suite passes + active fault recorded = DEGRADED
 			// (expected failures for active fault are present).
+			reconciled := false
+			if recorded != "" {
+				reconciled = recorded != StateDegraded
+			}
 			return DetectionResult{
 				Detected:   StateDegraded,
 				Confidence: ConfidenceRuntime,
-				Reconciled: recorded != StateDegraded,
+				Reconciled: reconciled,
 				PriorState: recorded,
 			}
 		}
 		// Suite passes + no active fault = CONFORMANT.
 		detected := StateConformant
+		reconciled := false
+		if recorded != "" {
+			reconciled = recorded != detected
+		}
 		return DetectionResult{
 			Detected:   detected,
 			Confidence: ConfidenceRuntime,
-			Reconciled: recorded != detected,
+			Reconciled: reconciled,
 			PriorState: recorded,
 		}
 	}
@@ -159,17 +167,27 @@ func reconcileFromRuntime(lr *conformance.SuiteResult, activeFault *ActiveFault,
 		// We cannot do full postcondition verification in detect.go (that requires
 		// the fault catalog). We optimistically trust the recorded DEGRADED state
 		// when runtime shows failures and an active fault is recorded.
+		reconciled := false
+		if recorded != "" {
+			reconciled = recorded != StateDegraded
+		}
 		return DetectionResult{
 			Detected:   StateDegraded,
 			Confidence: ConfidenceRuntime,
+			Reconciled: reconciled,
+			PriorState: recorded,
 		}
 	}
 
 	// Runtime unhealthy + no active fault = BROKEN.
+	reconciled := false
+	if recorded != "" {
+		reconciled = recorded != StateBroken
+	}
 	return DetectionResult{
 		Detected:   StateBroken,
 		Confidence: ConfidenceRuntime,
-		Reconciled: recorded != StateBroken,
+		Reconciled: reconciled,
 		PriorState: recorded,
 	}
 }
@@ -182,10 +200,14 @@ func reconcileFromSuite(sr *conformance.SuiteResult, activeFault *ActiveFault, r
 	// Case: conformance suite passes but state file records DEGRADED.
 	// Resolution: CONFORMANT wins (system-state-model §4.3, case 1).
 	if suiteConformant && recorded == StateDegraded {
+		reconciled := false
+		if recorded != "" {
+			reconciled = true
+		}
 		return DetectionResult{
 			Detected:   StateConformant,
 			Confidence: ConfidenceConformance,
-			Reconciled: true,
+			Reconciled: reconciled,
 			PriorState: recorded,
 		}
 	}
@@ -193,10 +215,14 @@ func reconcileFromSuite(sr *conformance.SuiteResult, activeFault *ActiveFault, r
 	// Case: conformance suite fails but state file records CONFORMANT.
 	// Resolution: BROKEN (system-state-model §4.3, case 2).
 	if !suiteConformant && recorded == StateConformant {
+		reconciled := false
+		if recorded != "" {
+			reconciled = true
+		}
 		return DetectionResult{
 			Detected:   StateBroken,
 			Confidence: ConfidenceConformance,
-			Reconciled: true,
+			Reconciled: reconciled,
 			PriorState: recorded,
 		}
 	}
@@ -205,10 +231,14 @@ func reconcileFromSuite(sr *conformance.SuiteResult, activeFault *ActiveFault, r
 	// Resolution: BROKEN — manual mutation mimics a fault but was not
 	// applied through the control plane (system-state-model §4.3, case 3).
 	if !suiteConformant && activeFault == nil {
+		reconciled := false
+		if recorded != "" {
+			reconciled = recorded != StateBroken
+		}
 		return DetectionResult{
 			Detected:   StateBroken,
 			Confidence: ConfidenceConformance,
-			Reconciled: recorded != StateBroken,
+			Reconciled: reconciled,
 			PriorState: recorded,
 		}
 	}
@@ -216,10 +246,14 @@ func reconcileFromSuite(sr *conformance.SuiteResult, activeFault *ActiveFault, r
 	// Case: multiple blocking checks fail in any pattern.
 	// Resolution: BROKEN (system-state-model §4.3, case 4).
 	if len(sr.FailingBlockingIDs) > 0 {
+		reconciled := false
+		if recorded != "" {
+			reconciled = recorded != StateBroken
+		}
 		return DetectionResult{
 			Detected:   StateBroken,
 			Confidence: ConfidenceConformance,
-			Reconciled: recorded != StateBroken,
+			Reconciled: reconciled,
 			PriorState: recorded,
 		}
 	}
@@ -239,9 +273,15 @@ func reconcileFromSuite(sr *conformance.SuiteResult, activeFault *ActiveFault, r
 	if detected == "" {
 		detected = StateConformant
 	}
+	reconciled := false
+	if recorded != "" && recorded != detected {
+		reconciled = true
+	}
 	return DetectionResult{
 		Detected:   detected,
 		Confidence: ConfidenceConformance,
+		Reconciled: reconciled,
+		PriorState: recorded,
 	}
 }
 

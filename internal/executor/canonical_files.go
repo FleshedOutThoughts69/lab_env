@@ -22,19 +22,12 @@ package executor
 // It is embedded here for reference and can be restored explicitly if needed.
 
 import (
-	_ "embed"
+	
 
-	"lab-env/lab/internal/config"
+	"lab_env/internal/config"
 )
 
-//go:embed ../config/config.yaml
-var embeddedAppConfig []byte
 
-//go:embed ../config/app.service
-var embeddedUnitFile []byte
-
-//go:embed ../config/nginx.conf
-var embeddedNginxConfig []byte
 
 // init populates canonicalFiles from the embedded file contents.
 // Called automatically at package initialization before any executor is created.
@@ -43,19 +36,19 @@ var embeddedNginxConfig []byte
 func init() {
 	canonicalFiles = map[string]canonicalFile{
 		config.ConfigPath: {
-			content: embeddedAppConfig,
+			content: config.EmbeddedAppConfig,
 			mode:    config.ModeConfig,
 			owner:   config.ServiceUser,
 			group:   config.ServiceGroup,
 		},
 		config.UnitFilePath: {
-			content: embeddedUnitFile,
+			content: config.EmbeddedUnitFile,
 			mode:    config.ModeUnitFile,
 			owner:   config.RootUser,
 			group:   config.RootGroup,
 		},
 		config.NginxConfigPath: {
-			content: embeddedNginxConfig,
+			content: config.EmbeddedNginxConfig,
 			mode:    config.ModeNginxConfig,
 			owner:   config.RootUser,
 			group:   config.RootGroup,

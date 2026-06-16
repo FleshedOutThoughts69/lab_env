@@ -352,10 +352,10 @@ func (r *Real) runSudo(cmd string, args ...string) (string, error) {
 
 // buildCanonicalMap returns the embedded canonical file contents.
 // This is the source of truth used by RestoreFile during R2 reset.
-// Contents are embedded at build time from lab-env/config/.
+// Contents are embedded at build time from lab_env/config/.
 func buildCanonicalMap() map[string]canonicalFile {
 	// The canonical file contents will be embedded via go:embed in a
-	// separate file (canonical_files.go) generated from lab-env/config/.
+	// separate file (canonical_files.go) generated from lab_env/config/.
 	// This function returns the map; the embed directives populate it.
 	// For now, returns an empty map — populated by canonical_files.go.
 	return canonicalFiles

@@ -1,5 +1,4 @@
-package cmd_test
-
+package cmd
 // fault_test.go enforces the fault apply command contract from
 // control-plane-contract §4.5:
 //   - unknown fault ID rejected before lock acquisition (precondition 1)
@@ -20,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	. "lab-env/lab/cmd"
-	"lab-env/lab/internal/catalog"
-	"lab-env/lab/internal/conformance"
-	"lab-env/lab/internal/executor"
-	"lab-env/lab/internal/output"
-	"lab-env/lab/internal/state"
+	. "lab_env/cmd"
+	"lab_env/internal/catalog"
+	"lab_env/internal/conformance"
+	"lab_env/internal/executor"
+	"lab_env/internal/output"
+	"lab_env/internal/state"
 )
 
 // ── stub executor ─────────────────────────────────────────────────────────────

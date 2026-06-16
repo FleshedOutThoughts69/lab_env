@@ -17,8 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"lab-env/lab/internal/config"
-	"lab-env/lab/internal/executor"
+	"lab_env/internal/config"
 )
 
 // TestRestoreFile_ConfigYaml_OwnershipAndMode verifies that after RestoreFile
@@ -35,7 +34,7 @@ func TestRestoreFile_ConfigYaml_OwnershipAndMode(t *testing.T) {
 	targetPath := filepath.Join(dir, "config.yaml")
 
 	// Create a stub executor targeting our temp dir.
-	// In live mode this would be executor.NewExecutor(audit) against the real system.
+	// In live mode this would be NewExecutor(audit) against the real system.
 	// Here we verify the content and mode using a test double that records calls.
 	_ = targetPath
 	_ = config.ModeConfig
@@ -54,9 +53,9 @@ func TestRestoreFile_CanonicalMap_HasCorrectModes(t *testing.T) {
 	// or via the RestoreFile behavior with a recording executor.
 
 	cases := []struct {
-		path     string
-		wantMode os.FileMode
-		wantUser string
+		path      string
+		wantMode  os.FileMode
+		wantUser  string
 		wantGroup string
 	}{
 		{
@@ -111,14 +110,11 @@ func TestAuditEntry_OnMutationFailure(t *testing.T) {
 	dir := t.TempDir()
 	auditPath := filepath.Join(dir, "audit.log")
 
-	logger, err := executor.NewAuditLogger(auditPath)
-	if err != nil {
-		t.Fatalf("NewAuditLogger: %v", err)
-	}
+	logger := NewAuditLogger(auditPath)
 
 	// Simulate a mutation failure: log an error entry
 	mutationErr := os.ErrPermission
-	logger.LogError("WriteFile", config.ConfigPath, mutationErr)
+	logger.LogError("WriteFile", mutationErr.Error())
 
 	// Read the audit log and verify an error entry was written
 	data, err := os.ReadFile(auditPath)
@@ -187,9 +183,9 @@ func (r *recordingExecutor) RestoreFile(path string) error {
 	// 3. Calls Chmod with the canonical mode
 	// 4. Calls Chown with the canonical user/group
 	//
-	// For unit tests, we use executor.RestoreFileForTest if exported,
+	// For unit tests, we use RestoreFileForTest if exported,
 	// or construct a stub canonicalFile directly.
-	entry, ok := executor.CanonicalFileEntry(path)
+	entry, ok := CanonicalFileEntry(path)
 	if !ok {
 		return os.ErrNotExist
 	}

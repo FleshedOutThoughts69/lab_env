@@ -13,9 +13,8 @@ package state
 import (
 	"testing"
 	"time"
-
 	"lab_env/internal/conformance"
-	. "lab_env/internal/state"
+	
 )
 
 // ── helpers ──────────────────────────────────────────────────────────────────

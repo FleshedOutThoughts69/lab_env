@@ -40,7 +40,7 @@ func TestArchitecture_NoProductionCodeImportsTestingPackage(t *testing.T) {
 		t.Fatalf("go list failed: %v\noutput: %s", err, out)
 	}
 
-	forbidden := []string{"testing", "lab-env/lab/internal/testutil"}
+	forbidden := []string{"testing", "lab_env/internal/testutil"}
 
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
@@ -77,8 +77,8 @@ func TestArchitecture_NoProductionCodeImportsTestingPackage(t *testing.T) {
 // violating the observation-only rule that is the core architectural property.
 func TestArchitecture_ConformanceChecks_DoNotImportExecutor(t *testing.T) {
 	assertNotImported(t,
-		"lab-env/lab/internal/conformance",
-		"lab-env/lab/internal/executor",
+		"lab_env/internal/conformance",
+		"lab_env/internal/executor",
 		"conformance checks must not import executor (observation-only rule)",
 	)
 }
@@ -91,8 +91,8 @@ func TestArchitecture_ConformanceChecks_DoNotImportExecutor(t *testing.T) {
 // bypassing the audit log and lock.
 func TestArchitecture_CatalogFaults_DoNotImportState(t *testing.T) {
 	assertNotImported(t,
-		"lab-env/lab/internal/catalog",
-		"lab-env/lab/internal/state",
+		"lab_env/internal/catalog",
+		"lab_env/internal/state",
 		"catalog faults must not import state (mutations must go through executor/audit path)",
 	)
 }
@@ -105,8 +105,8 @@ func TestArchitecture_CatalogFaults_DoNotImportState(t *testing.T) {
 // it could accidentally trigger check execution.
 func TestArchitecture_OutputPackage_DoNotImportConformance(t *testing.T) {
 	assertNotImported(t,
-		"lab-env/lab/internal/output",
-		"lab-env/lab/internal/conformance",
+		"lab_env/internal/output",
+		"lab_env/internal/conformance",
 		"output package must not import conformance (presentation must not trigger execution)",
 	)
 }
@@ -115,7 +115,7 @@ func TestArchitecture_OutputPackage_DoNotImportConformance(t *testing.T) {
 // the service module does not import anything from the control plane module.
 //
 // The two modules are deliberately separated (separate go.mod files). The
-// service must not import lab-env/lab packages — this would couple the
+// service must not import lab_env/lab packages — this would couple the
 // subject application to the control plane it is designed to be independent of.
 func TestArchitecture_ServiceModule_DoesNotImportControlPlane(t *testing.T) {
 	cmd := exec.Command("go", "list", "-f",
@@ -129,8 +129,8 @@ func TestArchitecture_ServiceModule_DoesNotImportControlPlane(t *testing.T) {
 	}
 
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(line, "github.com/lab-env/lab") &&
-			!strings.Contains(line, "github.com/lab-env/service") {
+		if strings.Contains(line, "lab_env/lab") &&
+			!strings.Contains(line, "lab_env/service") {
 			t.Errorf("service module imports control plane package: %s", line)
 		}
 	}

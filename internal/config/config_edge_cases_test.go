@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lab-env/service/config"
+	"lab_env/service/config"
 )
 
 // TestLoad_AppEnv_LeadingTrailingSpaces verifies that app_env with leading

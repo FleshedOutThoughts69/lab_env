@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lab-env/service/telemetry"
+	"lab_env/service/telemetry"
 )
 
 // TestSnapshot_Schema_AllFieldsPresent verifies that a telemetry snapshot
