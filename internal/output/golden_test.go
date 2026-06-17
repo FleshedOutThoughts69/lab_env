@@ -101,7 +101,6 @@ func renderToJSON(t *testing.T, value interface{}) []byte {
 // ── Golden fixture tests ──────────────────────────────────────────────────────
 
 func TestGolden_Status_Conformant(t *testing.T) {
-	t.Skip("golden fixture mismatch – update after renderer finalized")
 	resetTime := time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)
 	v := StatusResult{
 		State:       state.StateConformant,
@@ -128,7 +127,6 @@ func TestGolden_Status_Conformant(t *testing.T) {
 }
 
 func TestGolden_Status_Degraded(t *testing.T) {
-	t.Skip("golden fixture mismatch – update after renderer finalized")
 	v := StatusResult{
 		State: state.StateDegraded,
 		ActiveFault: &FaultRef{
@@ -157,7 +155,6 @@ func TestGolden_Status_Degraded(t *testing.T) {
 }
 
 func TestGolden_Status_Broken(t *testing.T) {
-	t.Skip("golden fixture mismatch – update after renderer finalized")
 	v := StatusResult{
 		State:       state.StateBroken,
 		ActiveFault: nil,
@@ -181,7 +178,6 @@ func TestGolden_Status_Broken(t *testing.T) {
 }
 
 func TestGolden_Validate_Conformant(t *testing.T) {
-	t.Skip("golden fixture mismatch – update after renderer finalized")
 	checks := []CheckResultItem{
 		{ID: "S-001", Assertion: "app.service is active",                      Passed: true, Severity: "blocking"},
 		{ID: "S-002", Assertion: "app.service is enabled",                     Passed: true, Severity: "blocking"},
@@ -222,7 +218,6 @@ func TestGolden_Validate_Conformant(t *testing.T) {
 }
 
 func TestGolden_FaultApply_Success(t *testing.T) {
-	t.Skip("golden fixture file missing – update after renderer finalized")
 	v := FaultApplyResult{
 		FaultID:   "F-004",
 		Applied:   true,

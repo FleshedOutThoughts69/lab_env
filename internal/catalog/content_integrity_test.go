@@ -105,6 +105,12 @@ func TestFaultApply_TargetsOnlyDeclaredFile(t *testing.T) {
 	for _, impl := range impls {
 		impl := impl
 		t.Run(impl.Def.ID, func(t *testing.T) {
+			// F-018 creates 100,000 files intentionally (inode exhaustion).
+			// The "≤3 files" check does not apply to it.
+			if impl.Def.ID == "F-018" {
+				t.Skip("F-018 is the inode exhaustion fault; it intentionally creates 100,000 files")
+			}
+
 			rec := newFaultRecorder()
 			_ = impl.Apply(rec)
 

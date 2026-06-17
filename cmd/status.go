@@ -73,14 +73,20 @@ func (c *StatusCmd) Run() output.CommandResult {
 		}
 	}
 
-	result := buildStatusResult(sf, detection.Detected, lwResult, readErr)
+	result := buildStatusResult(sf, detection.Detected, lwResult, readErr, c.obs)
 	return output.CommandResult{Value: result, ExitCode: 0}
 }
 
-func buildStatusResult(sf *state.File, detected state.State, lw *conformance.SuiteResult, readErr error) output.StatusResult {
+func buildStatusResult(
+	sf *state.File,
+	detected state.State,
+	lw *conformance.SuiteResult,
+	readErr error,
+	obs conformance.Observer,
+) output.StatusResult {
 	r := output.StatusResult{
-		State:    detected,
-		Services: map[string]output.SvcInfo{},
+		State:     detected,
+		Services:  map[string]output.SvcInfo{},
 		Endpoints: map[string]int{},
 	}
 
@@ -120,15 +126,17 @@ func buildStatusResult(sf *state.File, detected state.State, lw *conformance.Sui
 			if res.Passed {
 				r.Ports = append(r.Ports, output.PortInfo{Addr: "127.0.0.1:8080", Owner: "app"})
 			}
-		case "E-001":
-			code := 0
-			if !res.Passed {
-				code = 502 // best guess without exact status
-			} else {
-				code = 200
-			}
-			r.Endpoints["http://localhost/health"] = code
 		}
+	}
+
+	// Endpoint status codes from live observer calls — not guesses.
+	healthStatus, err := obs.CheckEndpoint("http://localhost/health", false)
+	if err == nil {
+		r.Endpoints["http://localhost/health"] = healthStatus.StatusCode
+	}
+	rootStatus, err := obs.CheckEndpoint("http://localhost/", false)
+	if err == nil {
+		r.Endpoints["http://localhost/"] = rootStatus.StatusCode
 	}
 
 	// Add nginx ports (known from canonical environment — not from lightweight run).

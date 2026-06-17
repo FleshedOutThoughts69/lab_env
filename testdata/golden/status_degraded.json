@@ -1,19 +1,14 @@
 {
-  "state": "DEGRADED",
   "active_fault": {
-    "id": "F-004",
-    "applied_at": "2026-01-01T12:00:00Z"
+    "applied_at": "2026-01-01T12:00:00Z",
+    "id": "F-004"
   },
-  "services": {
-    "app.service": {
-      "active": true,
-      "pid": 4321
-    },
-    "nginx": {
-      "active": true,
-      "pid": 0
-    }
+  "endpoints": {
+    "http://localhost/": 500,
+    "http://localhost/health": 200
   },
+  "last_reset": null,
+  "last_validate": null,
   "ports": [
     {
       "addr": "127.0.0.1:8080",
@@ -28,10 +23,14 @@
       "owner": "nginx (TLS)"
     }
   ],
-  "endpoints": {
-    "http://localhost/health": 200,
-    "http://localhost/": 500
+  "services": {
+    "app.service": {
+      "active": true,
+      "pid": 4321
+    },
+    "nginx": {
+      "active": true
+    }
   },
-  "last_validate": null,
-  "last_reset": null
+  "state": "DEGRADED"
 }

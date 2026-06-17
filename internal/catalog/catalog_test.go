@@ -6,7 +6,8 @@ package catalog_test
 
 import (
 	"testing"
-
+	"reflect"
+	"lab_env/internal/executor"
 	"lab_env/internal/conformance"
 	. "lab_env/internal/catalog"
 	"lab_env/internal/state"
@@ -272,5 +273,27 @@ func TestAllDefs_ReturnsCopies(t *testing.T) {
 	defs1[0].ID = "MUTATED"
 	if defs2[0].ID == "MUTATED" {
 		t.Error("AllDefs should return independent copies, not shared pointers")
+	}
+}
+
+// TestFaultApply_ReceivesExecutor_NotObserver verifies that every fault's
+// Apply function receives an executor.Executor, not just a conformance.Observer.
+// This guarantees faults can always mutate the system.
+func TestFaultApply_ReceivesExecutor_NotObserver(t *testing.T) {
+	impls := AllImpls()
+	for _, impl := range impls {
+		if impl.Def == nil || impl.Apply == nil {
+			continue
+		}
+		applyType := reflect.TypeOf(impl.Apply)
+		if applyType.NumIn() != 1 {
+			t.Errorf("%s: Apply expects %d parameters, want 1", impl.Def.ID, applyType.NumIn())
+			continue
+		}
+		paramType := applyType.In(0)
+		execType := reflect.TypeOf((*executor.Executor)(nil)).Elem()
+		if !paramType.Implements(execType) {
+			t.Errorf("%s: Apply parameter is %v, must implement executor.Executor", impl.Def.ID, paramType)
+		}
 	}
 }

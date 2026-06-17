@@ -1,15 +1,17 @@
 {
-  "state": "CONFORMANT",
   "active_fault": null,
-  "services": {
-    "app.service": {
-      "active": true,
-      "pid": 4321
-    },
-    "nginx": {
-      "active": true,
-      "pid": 0
-    }
+  "endpoints": {
+    "http://localhost/": 200,
+    "http://localhost/health": 200
+  },
+  "last_reset": {
+    "at": "2026-01-01T11:00:00Z",
+    "tier": "R2"
+  },
+  "last_validate": {
+    "at": "2026-01-01T12:00:00Z",
+    "passed": 23,
+    "total": 23
   },
   "ports": [
     {
@@ -25,17 +27,14 @@
       "owner": "nginx (TLS)"
     }
   ],
-  "endpoints": {
-    "http://localhost/health": 200,
-    "http://localhost/": 200
+  "services": {
+    "app.service": {
+      "active": true,
+      "pid": 4321
+    },
+    "nginx": {
+      "active": true
+    }
   },
-  "last_validate": {
-    "at": "2026-01-01T12:00:00Z",
-    "passed": 23,
-    "total": 23
-  },
-  "last_reset": {
-    "at": "2026-01-01T11:00:00Z",
-    "tier": "R2"
-  }
+  "state": "CONFORMANT"
 }
