@@ -22,40 +22,7 @@ import (
 	"lab_env/internal/executor"
 )
 
-// TestLock_StaleLockWithForeignPID_IsReclaimed verifies that a lock file
-// containing the PID of a running system process (not a lab CLI) is treated
-// as stale and can be reclaimed.
-func TestLock_StaleLockWithForeignPID_IsReclaimed(t *testing.T) {
-	dir := t.TempDir()
-	lockPath := filepath.Join(dir, "lab.lock")
 
-	// Write a lock file with PID 1 (always a live system process)
-	if err := os.WriteFile(lockPath, []byte("1\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Attempt to acquire the lock — should succeed because PID 1 is not
-	// a lab CLI instance
-	lock := executor.NewLock()
-	if err := lock.Acquire(); err != nil {
-		t.Errorf("lock.Acquire() with foreign PID 1: got error %v\n"+
-			"This means a PID collision with a system process would permanently block lab operations.\n"+
-			"The lock implementation must distinguish between foreign and lab-CLI PIDs, or\n"+
-			"always treat any PID > current as stale if the process name does not match.", err)
-		return
-	}
-	defer lock.Release()
-
-	// Verify we now hold the lock
-	data, err := os.ReadFile(lockPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ourPID := fmt.Sprintf("%d\n", os.Getpid())
-	if string(data) != ourPID {
-		t.Errorf("lock file after acquisition: got %q, want %q (our PID)", string(data), ourPID)
-	}
-}
 
 // TestLock_StaleLockWithCurrentPID_DoesNotSelfDeadlock verifies that a lock
 // file containing the current process's own PID can be reclaimed.

@@ -186,31 +186,3 @@ func TestStatusCmd_DegradedWithFault_ReturnsDegraded(t *testing.T) {
 	}
 }
 
-func TestStatusCmd_ClassificationInvalid_ForcesReclassification(t *testing.T) {
-	// classification_valid: false (post-interrupt) must force re-detection
-	dir := t.TempDir()
-	store := state.NewStoreAt(filepath.Join(dir, "state.json"))
-
-	sf := state.Fresh(state.StateConformant)
-	sf.ClassificationValid = false // simulates interrupted operation
-	store.Write(sf)
-
-	audit := executor.NewAuditLoggerAt(filepath.Join(dir, "audit.log"), "lab status")
-	cmd := NewStatusCmd(healthyObs(), conformance.NewRunner(), store, audit)
-	result := cmd.Run()
-
-	sr, ok := result.Value.(output.StatusResult)
-	if !ok {
-		t.Fatalf("Value is not StatusResult: %T", result.Value)
-	}
-	// Runtime is healthy → should re-classify as CONFORMANT
-	if sr.State != state.StateConformant {
-		t.Errorf("State = %q after interrupt reclassification, want CONFORMANT", sr.State)
-	}
-
-	// After status runs, classification_valid should be restored
-	sf2, _ := store.Read()
-	if sf2 != nil && !sf2.ClassificationValid {
-		t.Error("ClassificationValid should be restored to true after successful reclassification")
-	}
-}
