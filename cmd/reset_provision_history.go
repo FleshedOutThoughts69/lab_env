@@ -70,8 +70,20 @@ func (c *ProvisionCmd) Run() output.CommandResult {
         }
     }
 
+    // Build a validation summary from the suite result to avoid JSON-encoding
+    // the entire SuiteResult (which contains unexported fields and function pointers).
+    validation := &output.ValidateSummary{
+        At:     sr.At,
+        Passed: sr.Passed,
+        Total:  sr.Total,
+    }
+
     return output.CommandResult{
-        Value:    output.ProvisionResult{ToState: toState, Suite: sr, DurationMs: time.Since(start).Milliseconds()},
+        Value: output.ProvisionResult{
+            ToState:    toState,
+            Validation: validation,
+            DurationMs: time.Since(start).Milliseconds(),
+        },
         ExitCode: 0,
     }
 }

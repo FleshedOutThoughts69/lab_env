@@ -100,9 +100,9 @@ type ResetResult struct {
 
 // ProvisionResult is the structured result of lab provision.
 type ProvisionResult struct {
-	ToState    state.State `json:"to_state"`
-	Suite      *conformance.SuiteResult `json:"suite,omitempty"`
-	DurationMs int64       `json:"duration_ms"`
+    ToState    state.State
+    Validation *ValidateSummary   // was: Suite *conformance.SuiteResult
+    DurationMs int64
 }
 
 // HistoryResult is the structured result of lab history.
