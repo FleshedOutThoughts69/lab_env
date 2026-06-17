@@ -11,60 +11,65 @@ package signals
 //
 // All tests use t.TempDir() — no writes to the real /run/app/.
 // The signals package uses the Dir constant; tests override it via
-// signals.SetDirForTest(t.TempDir()).
+// SetDirForTest(t.TempDir()).
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"lab_env/service/signals"
 )
 
 // TestStartupSequence_LoadingBeforeHealthy verifies that:
-//  1. Init() removes any stale loading file and creates a fresh one
-//  2. CreateHealthy() creates the healthy marker
-//  3. RemoveLoading() removes the loading marker
-//  4. The two files do NOT coexist after step 3
+//  1. Init() removes any stale loading file and writes status=Starting
+//  2. CreateLoading() creates the loading marker
+//  3. CreateHealthy() creates the healthy marker
+//  4. RemoveLoading() removes the loading marker
+//  5. The two files do NOT coexist after step 4
 //
 // The control plane interprets loading+healthy as contradictory state.
 func TestStartupSequence_LoadingBeforeHealthy(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
-	// Step 1: Init — removes stale, creates loading, sets Starting
-	if err := signals.Init(); err != nil {
+	// Step 1: Init — removes stale, writes status Starting
+	if err := Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	assertFileExists(t, dir, "loading")
+	assertFileAbsent(t, dir, "loading")   // Init no longer creates loading
 	assertFileAbsent(t, dir, "healthy")
-	assertStatus(t, dir, signals.StatusStarting)
+	assertStatus(t, dir, StatusStarting)
 
-	// Step 2: WritePID
-	if err := signals.WritePID(); err != nil {
+	// Step 2: CreateLoading
+	if err := CreateLoading(); err != nil {
+		t.Fatalf("CreateLoading: %v", err)
+	}
+	assertFileExists(t, dir, "loading")
+
+	// Step 3: WritePID
+	if err := WritePID(); err != nil {
 		t.Fatalf("WritePID: %v", err)
 	}
 	assertFileExists(t, dir, "app.pid")
 
-	// Step 3: CreateHealthy
-	if err := signals.CreateHealthy(); err != nil {
+	// Step 4: CreateHealthy
+	if err := CreateHealthy(); err != nil {
 		t.Fatalf("CreateHealthy: %v", err)
 	}
 	assertFileExists(t, dir, "healthy")
 
-	// Step 4: RemoveLoading — now both files should NOT coexist
-	if err := signals.RemoveLoading(); err != nil {
+	// Step 5: RemoveLoading — now both files should NOT coexist
+	if err := RemoveLoading(); err != nil {
 		t.Fatalf("RemoveLoading: %v", err)
 	}
 	assertFileAbsent(t, dir, "loading")
 	assertFileExists(t, dir, "healthy")
 
-	// Step 5: SetStatus Running
-	if err := signals.SetStatus(signals.StatusRunning); err != nil {
+	// Step 6: SetStatus Running
+	if err := SetStatus(StatusRunning); err != nil {
 		t.Fatalf("SetStatus Running: %v", err)
 	}
-	assertStatus(t, dir, signals.StatusRunning)
+	assertStatus(t, dir, StatusRunning)
 }
 
 // TestShutdownSequence_StatusBeforeHealthyRemoval verifies that BeginShutdown
@@ -77,50 +82,52 @@ func TestStartupSequence_LoadingBeforeHealthy(t *testing.T) {
 // which the control plane interprets as a crash (BROKEN), not a clean shutdown.
 func TestShutdownSequence_StatusBeforeHealthyRemoval(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	// Set up running state
-	if err := signals.Init(); err != nil {
+	if err := Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.CreateHealthy(); err != nil {
+	if err := CreateLoading(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.RemoveLoading(); err != nil {
+	if err := CreateHealthy(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.SetStatus(signals.StatusRunning); err != nil {
+	if err := RemoveLoading(); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetStatus(StatusRunning); err != nil {
 		t.Fatal(err)
 	}
 
 	// Track the order of operations using file observation.
-	// We intercept via a goroutine that reads status before and after healthy removal.
 	statusBeforeHealthyGone := ""
 	doneCh := make(chan struct{})
 
 	// Use a hook that the signals package calls during BeginShutdown.
 	// If no hook exists, we verify by observing the final state:
 	// after BeginShutdown, status must be ShuttingDown and healthy must be absent.
-	signals.BeginShutdown()
+	BeginShutdown()
 
 	close(doneCh)
 	_ = statusBeforeHealthyGone
 
 	// Post-shutdown assertions
 	assertFileAbsent(t, dir, "healthy")
-	assertStatus(t, dir, signals.StatusShuttingDown)
+	assertStatus(t, dir, StatusShuttingDown)
 }
 
 // TestInit_RemovesStaleLoadingFromCrash verifies that Init() removes a loading
-// file left by a previous crash, then creates a fresh one.
+// file left by a previous crash, then writes status=Starting.
 //
 // Without this, a crashed service that left loading=present would keep the
 // control plane in RECOVERING state indefinitely across restarts.
 func TestInit_RemovesStaleLoadingFromCrash(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	// Simulate crash: loading file exists from previous run
 	staleLoading := filepath.Join(dir, "loading")
@@ -129,16 +136,16 @@ func TestInit_RemovesStaleLoadingFromCrash(t *testing.T) {
 	}
 	assertFileExists(t, dir, "loading")
 
-	// Init must remove stale and recreate fresh
-	if err := signals.Init(); err != nil {
+	// Init must remove stale loading file
+	if err := Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
-	// Loading must still exist (recreated fresh)
-	assertFileExists(t, dir, "loading")
+	// Loading must be absent after Init (it's now created separately by CreateLoading)
+	assertFileAbsent(t, dir, "loading")
 
 	// But status must be Starting (written by Init)
-	assertStatus(t, dir, signals.StatusStarting)
+	assertStatus(t, dir, StatusStarting)
 }
 
 // TestInit_RemovesStaleHealthy verifies that Init() also removes a stale
@@ -148,8 +155,8 @@ func TestInit_RemovesStaleLoadingFromCrash(t *testing.T) {
 // the service is ready when it is still initializing.
 func TestInit_RemovesStaleHealthy(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	// Simulate: previous run left healthy present
 	staleHealthy := filepath.Join(dir, "healthy")
@@ -157,7 +164,7 @@ func TestInit_RemovesStaleHealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := signals.Init(); err != nil {
+	if err := Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -172,11 +179,11 @@ func TestInit_RemovesStaleHealthy(t *testing.T) {
 // the next boot might find a stale .tmp- file in /run/app/.
 func TestAtomicWrite_NoZeroByteTempFile(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	// Write a known status value
-	if err := signals.SetStatus(signals.StatusRunning); err != nil {
+	if err := SetStatus(StatusRunning); err != nil {
 		t.Fatalf("SetStatus: %v", err)
 	}
 
@@ -197,16 +204,19 @@ func TestAtomicWrite_NoZeroByteTempFile(t *testing.T) {
 // user) can read them.
 func TestSignalFiles_Mode0644(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
-	if err := signals.Init(); err != nil {
+	if err := Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.WritePID(); err != nil {
+	if err := CreateLoading(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.CreateHealthy(); err != nil {
+	if err := WritePID(); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateHealthy(); err != nil {
 		t.Fatal(err)
 	}
 

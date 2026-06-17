@@ -22,8 +22,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"lab_env/service/logging"
 )
 
 // TestNew_OpensWithOAppend verifies that the log file is opened with O_APPEND.
@@ -36,9 +34,9 @@ func TestNew_OpensWithOAppend(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	defer logger.Close()
 
@@ -95,9 +93,9 @@ func TestLogger_ConcurrentWrites_NoInterleavedLines(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	defer logger.Close()
 
@@ -157,9 +155,9 @@ func TestLogger_EntryIsCompleteJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	// Write one entry then close
@@ -203,9 +201,9 @@ func TestLogger_KeyValuePairs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	defer logger.Close()
 
@@ -238,9 +236,9 @@ func TestLogger_FileMode0640(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	logger.Close()
 

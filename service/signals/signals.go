@@ -54,7 +54,7 @@ import (
 )
 
 const (
-	// Dir is the signal file directory. Must be a tmpfs owned by appuser:appuser 755.
+	// Dir is the canonical signal file directory. Must be a tmpfs owned by appuser:appuser 755.
 	// Application Runtime Contract §3.
 	Dir = "/run/app"
 
@@ -90,6 +90,32 @@ const (
 	StatusShuttingDown = "ShuttingDown"
 )
 
+// testDir is a directory override used only during tests.
+// When non‑empty, all signal file operations target this directory instead of Dir.
+var testDir string
+
+// SetDirForTest overrides the signal file directory for the duration of a test.
+// Call ResetDir to restore the default. Not safe for concurrent use.
+func SetDirForTest(path string) { testDir = path }
+
+// ResetDir clears the test directory override.
+func ResetDir() { testDir = "" }
+
+// dir returns the directory currently in use (test override or the default Dir).
+func dir() string {
+	if testDir != "" {
+		return testDir
+	}
+	return Dir
+}
+
+// --- private helpers that resolve file paths dynamically ---
+
+func pidFilePath() string     { return filepath.Join(dir(), "app.pid") }
+func healthyFilePath() string { return filepath.Join(dir(), "healthy") }
+func loadingFilePath() string { return filepath.Join(dir(), "loading") }
+func statusFilePath() string  { return filepath.Join(dir(), "status") }
+
 // Init prepares the signal directory for a fresh startup.
 // It removes any stale files from a previous crash and writes the initial status.
 // Must be called before any other signal file operation.
@@ -98,10 +124,10 @@ func Init() error {
 	// If the process crashed after writing loading but before deleting it,
 	// the control plane would see both healthy absent and loading present —
 	// which it interprets as RECOVERING. Cleaning it here ensures a fresh start.
-	_ = os.Remove(LoadingFile)
+	_ = os.Remove(loadingFilePath())
 
 	// Remove stale healthy marker.
-	_ = os.Remove(HealthyFile)
+	_ = os.Remove(healthyFilePath())
 
 	// Write initial status.
 	return SetStatus(StatusStarting)
@@ -110,26 +136,26 @@ func Init() error {
 // CreateLoading creates the loading marker file.
 // Called immediately after Init, before any initialization.
 func CreateLoading() error {
-	return writeEmpty(LoadingFile)
+	return writeEmpty(loadingFilePath())
 }
 
 // WritePID writes the current process PID to the PID file.
 // Application Runtime Contract §3.1: written before accepting requests.
 func WritePID() error {
-	return writeAtomic(PIDFile, []byte(strconv.Itoa(os.Getpid())+"\n"))
+	return writeAtomic(pidFilePath(), []byte(strconv.Itoa(os.Getpid())+"\n"))
 }
 
 // CreateHealthy creates the healthy marker file.
 // Called only after all initialization passes and socket is bound.
 // Application Runtime Contract §3.2.
 func CreateHealthy() error {
-	return writeEmpty(HealthyFile)
+	return writeEmpty(healthyFilePath())
 }
 
 // RemoveLoading removes the loading marker.
 // Called immediately after CreateHealthy — the two must not coexist.
 func RemoveLoading() error {
-	err := os.Remove(LoadingFile)
+	err := os.Remove(loadingFilePath())
 	if os.IsNotExist(err) {
 		return nil // idempotent
 	}
@@ -147,7 +173,7 @@ func RemoveLoading() error {
 // These are mutually exclusive in normal operation; if both conditions exist
 // simultaneously, Unhealthy takes precedence (service is not serving correctly).
 func SetStatus(status string) error {
-	return writeAtomic(StatusFile, []byte(status+"\n"))
+	return writeAtomic(statusFilePath(), []byte(status+"\n"))
 }
 
 // BeginShutdown writes ShuttingDown status then removes the healthy marker.
@@ -161,13 +187,13 @@ func SetStatus(status string) error {
 // The brief window with both set is benign; the final state is unambiguous.
 func BeginShutdown() {
 	_ = SetStatus(StatusShuttingDown)
-	_ = os.Remove(HealthyFile)
+	_ = os.Remove(healthyFilePath())
 }
 
 // RemovePID removes the PID file.
 // Called as the last step of the shutdown sequence, after http.Server.Shutdown returns.
 func RemovePID() {
-	_ = os.Remove(PIDFile)
+	_ = os.Remove(pidFilePath())
 }
 
 // writeEmpty writes an empty file atomically.

@@ -57,6 +57,25 @@ const (
 	UpdateInterval = 2 * time.Second
 )
 
+// testFilePath is a directory override used only during tests.
+// When non‑empty, all telemetry file operations target this path instead of TelemetryFile.
+var testFilePath string
+
+// SetFilePathForTest overrides the telemetry file path for the duration of a test.
+// Call ResetFilePath to restore the default. Not safe for concurrent use.
+func SetFilePathForTest(path string) { testFilePath = path }
+
+// ResetFilePath clears the test file path override.
+func ResetFilePath() { testFilePath = "" }
+
+// telemetryPath returns the path currently in use (test override or the default).
+func telemetryPath() string {
+	if testFilePath != "" {
+		return testFilePath
+	}
+	return TelemetryFile
+}
+
 // Snapshot is the telemetry JSON schema.
 // All fields are present in every write, even when zero.
 type Snapshot struct {
@@ -188,7 +207,7 @@ func (c *Collector) write() {
 	}
 
 	// Atomic write: temp file + rename. Required by Application Runtime Contract §3.5.
-	writeAtomic(TelemetryFile, data)
+	writeAtomic(telemetryPath(), data)
 }
 
 // cpuPercent computes CPU usage as a percentage of one core since the last sample.

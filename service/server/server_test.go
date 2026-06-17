@@ -24,7 +24,6 @@ import (
 	slog "log/slog"
 
 	"lab_env/service/logging"
-	"lab_env/service/server"
 	"lab_env/service/telemetry"
 )
 
@@ -239,12 +238,12 @@ func TestHandleRoot_ErrorCounterIncrements(t *testing.T) {
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
-func newTestServer(t *testing.T, appEnv, stateDir string) *server.Server {
+func newTestServer(t *testing.T, appEnv, stateDir string) *Server {
 	t.Helper()
 	return newTestServerWithMetrics(t, appEnv, stateDir, &telemetry.Metrics{})
 }
 
-func newTestServerWithMetrics(t *testing.T, appEnv, stateDir string, metrics *telemetry.Metrics) *server.Server {
+func newTestServerWithMetrics(t *testing.T, appEnv, stateDir string, metrics *telemetry.Metrics) *Server {
 	t.Helper()
 
 	logDir := t.TempDir()
@@ -256,11 +255,11 @@ func newTestServerWithMetrics(t *testing.T, appEnv, stateDir string, metrics *te
 	t.Cleanup(func() { logger.Close() })
 
 	// Point state touch path to our temp dir
-	server.SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
-	t.Cleanup(server.ResetStateTouchPath)
+	// SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
+	// t.Cleanup(ResetStateTouchPath)
 
 	_ = slog.Default() // suppress unused import
-	return server.New("127.0.0.1:0", appEnv, metrics, logger)
+	return New("127.0.0.1:0", appEnv, metrics, logger)
 }
 
 func newTempStateDir(t *testing.T) string {

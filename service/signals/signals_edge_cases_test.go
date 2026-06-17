@@ -3,14 +3,17 @@ package signals
 // signals_edge_test.go
 //
 // Edge cases for the signal file package not covered by signals_test.go.
+//
+// These tests are now fully enabled because the directory‑override hooks
+// (SetDirForTest / ResetDir) were added to the production code.
+// The test helpers assertFileExists, assertFileAbsent, and assertStatus are
+// shared from signals_test.go (same package).
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"lab_env/service/signals"
 )
 
 // TestBeginShutdown_WhenHealthyAlreadyRemoved verifies that calling
@@ -22,22 +25,22 @@ import (
 // The service must handle this gracefully.
 func TestBeginShutdown_WhenHealthyAlreadyRemoved(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	// Set up running state but don't create healthy
-	if err := signals.Init(); err != nil {
+	if err := Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.SetStatus(signals.StatusRunning); err != nil {
+	if err := SetStatus(StatusRunning); err != nil {
 		t.Fatal(err)
 	}
 	// healthy is intentionally absent
 
 	// BeginShutdown must not error even when healthy is already absent
-	signals.BeginShutdown() // returns void — must not panic
+	BeginShutdown() // returns void — must not panic
 
-	assertStatus(t, dir, signals.StatusShuttingDown)
+	assertStatus(t, dir, StatusShuttingDown)
 	assertFileAbsent(t, dir, "healthy")
 }
 
@@ -45,19 +48,19 @@ func TestBeginShutdown_WhenHealthyAlreadyRemoved(t *testing.T) {
 // BeginShutdown in the shutdown sequence) removes the PID file.
 func TestShutdownSequence_RemovesPID(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
-	if err := signals.Init(); err != nil {
+	if err := Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.WritePID(); err != nil {
+	if err := WritePID(); err != nil {
 		t.Fatal(err)
 	}
 	assertFileExists(t, dir, "app.pid")
 
-	signals.BeginShutdown()
-	signals.RemovePID()
+	BeginShutdown()
+	RemovePID()
 
 	assertFileAbsent(t, dir, "app.pid")
 }
@@ -70,20 +73,20 @@ func TestShutdownSequence_RemovesPID(t *testing.T) {
 // misclassification.
 func TestSetStatus_ContentIsExactStringPlusNewline(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	cases := []string{
-		signals.StatusStarting,
-		signals.StatusRunning,
-		signals.StatusDegraded,
-		signals.StatusUnhealthy,
-		signals.StatusShuttingDown,
+		StatusStarting,
+		StatusRunning,
+		StatusDegraded,
+		StatusUnhealthy,
+		StatusShuttingDown,
 	}
 
 	for _, status := range cases {
 		t.Run(status, func(t *testing.T) {
-			if err := signals.SetStatus(status); err != nil {
+			if err := SetStatus(status); err != nil {
 				t.Fatalf("SetStatus(%q): %v", status, err)
 			}
 
@@ -112,13 +115,13 @@ func TestSetStatus_ContentIsExactStringPlusNewline(t *testing.T) {
 // The conformance check P-005 reads this file; format must be exact.
 func TestWritePID_ContainsDecimalPIDAndNewline(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
-	if err := signals.Init(); err != nil {
+	if err := Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := signals.WritePID(); err != nil {
+	if err := WritePID(); err != nil {
 		t.Fatalf("WritePID: %v", err)
 	}
 
@@ -155,11 +158,11 @@ func TestWritePID_ContainsDecimalPIDAndNewline(t *testing.T) {
 // when the loading file is already absent returns nil (not an error).
 func TestRemoveLoading_IdempotentWhenAbsent(t *testing.T) {
 	dir := t.TempDir()
-	signals.SetDirForTest(dir)
-	defer signals.ResetDir()
+	SetDirForTest(dir)
+	defer ResetDir()
 
 	// loading file was never created
-	if err := signals.RemoveLoading(); err != nil {
+	if err := RemoveLoading(); err != nil {
 		t.Errorf("RemoveLoading when absent: expected nil, got %v", err)
 	}
 }

@@ -9,8 +9,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"lab_env/service/chaos"
 )
 
 // TestChaosHandler_Drop100_PassesHealth verifies that even at 100% drop rate,
@@ -28,7 +26,7 @@ func TestChaosHandler_Drop100_HealthIsExempted(t *testing.T) {
 	t.Skip("design decision: verify whether /health should be exempt from drops like it is from latency")
 	// This test is left as a skip to document the open design question.
 	// The current implementation drops ALL routes including /health for drop percent.
-	// The latency exemption was explicit (chaos.go ServeHTTP comment).
+	// The latency exemption was explicit (go ServeHTTP comment).
 	// If /health should also be exempt from drops, uncomment and implement.
 }
 
@@ -39,7 +37,7 @@ func TestChaosHandler_Drop100_AllNonHealthRoutesDrop(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := chaos.New(base, 0, 100, nil, nil, nil)
+	handler := New(base, 0, 100, nil, nil, nil)
 
 	routes := []string{"/", "/slow", "/api/anything"}
 	for _, route := range routes {
@@ -67,7 +65,7 @@ func TestChaosHandler_Latency_ActuallyDelaysRoot(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := chaos.New(base, latencyMS, 0, nil, nil, nil)
+	handler := New(base, latencyMS, 0, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -92,7 +90,7 @@ func TestChaosHandler_ZeroLatency_NoDelay(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := chaos.New(base, 0, 0, nil, nil, nil)
+	handler := New(base, 0, 0, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()

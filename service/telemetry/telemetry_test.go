@@ -18,8 +18,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"lab_env/service/telemetry"
 )
 
 // TestSnapshot_Schema_AllFieldsPresent verifies that a telemetry snapshot
@@ -27,7 +25,7 @@ import (
 //
 // This test catches JSON tag typos and missing fields before integration.
 func TestSnapshot_Schema_AllFieldsPresent(t *testing.T) {
-	snap := telemetry.Snapshot{
+	snap := Snapshot{
 		Ts:                "2026-01-01T00:00:00Z",
 		PID:               1234,
 		UptimeSeconds:     60,
@@ -92,7 +90,7 @@ func TestSnapshot_Schema_AllFieldsPresent(t *testing.T) {
 // TestSnapshot_Schema_FieldTypes verifies that numeric fields marshal as
 // JSON numbers (not strings) and chaos_modes marshals as array (not null).
 func TestSnapshot_Schema_FieldTypes(t *testing.T) {
-	snap := telemetry.Snapshot{
+	snap := Snapshot{
 		Ts:         "2026-01-01T00:00:00Z",
 		ChaosModes: []string{}, // empty but not nil
 	}
@@ -137,11 +135,11 @@ func TestSnapshot_Schema_FieldTypes(t *testing.T) {
 func TestCollector_WritesTelemetryFile(t *testing.T) {
 	dir := t.TempDir()
 	telPath := filepath.Join(dir, "telemetry.json")
-	telemetry.SetFilePathForTest(telPath)
-	defer telemetry.ResetFilePath()
+	SetFilePathForTest(telPath)
+	defer ResetFilePath()
 
-	metrics := &telemetry.Metrics{}
-	collector := telemetry.New(
+	metrics := &Metrics{}
+	collector := New(
 		metrics,
 		func() bool { return false },
 		func() []string { return nil },
@@ -167,7 +165,7 @@ func TestCollector_WritesTelemetryFile(t *testing.T) {
 		t.Fatalf("telemetry file not written: %v", err)
 	}
 
-	var snap telemetry.Snapshot
+	var snap Snapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		t.Fatalf("telemetry file contains invalid JSON: %v\nraw: %s", err, data)
 	}
@@ -185,13 +183,13 @@ func TestCollector_WritesTelemetryFile(t *testing.T) {
 func TestCollector_PanicRecovery(t *testing.T) {
 	dir := t.TempDir()
 	telPath := filepath.Join(dir, "telemetry.json")
-	telemetry.SetFilePathForTest(telPath)
-	defer telemetry.ResetFilePath()
+	SetFilePathForTest(telPath)
+	defer ResetFilePath()
 
 	var panicCount atomic.Int32
 	var writeCount atomic.Int32
 
-	metrics := &telemetry.Metrics{}
+	metrics := &Metrics{}
 
 	// Inject a panicking chaos provider for the first call, then recover
 	callCount := 0
@@ -205,7 +203,7 @@ func TestCollector_PanicRecovery(t *testing.T) {
 		return false
 	}
 
-	collector := telemetry.New(
+	collector := New(
 		metrics,
 		chaosActive,
 		func() []string { return nil },
@@ -239,11 +237,11 @@ func TestCollector_PanicRecovery(t *testing.T) {
 func TestCollector_ChaosModesNeverNull(t *testing.T) {
 	dir := t.TempDir()
 	telPath := filepath.Join(dir, "telemetry.json")
-	telemetry.SetFilePathForTest(telPath)
-	defer telemetry.ResetFilePath()
+	SetFilePathForTest(telPath)
+	defer ResetFilePath()
 
-	metrics := &telemetry.Metrics{}
-	collector := telemetry.New(
+	metrics := &Metrics{}
+	collector := New(
 		metrics,
 		func() bool { return false },
 		func() []string { return nil }, // returns nil, must become []

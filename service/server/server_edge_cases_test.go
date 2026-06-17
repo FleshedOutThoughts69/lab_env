@@ -12,9 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-
 	"lab_env/service/logging"
-	"lab_env/service/server"
 	"lab_env/service/telemetry"
 )
 
@@ -138,18 +136,18 @@ func TestConcurrent_HealthAndRoot_StateWriteFailure(t *testing.T) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func newEdgeTestServer(t *testing.T, appEnv, stateDir string) *server.Server {
+func newEdgeTestServer(t *testing.T, appEnv, stateDir string) *Server {
 	t.Helper()
 	logDir := t.TempDir()
 	logPath := filepath.Join(logDir, "app.log")
-	logger, err := logging.New(logPath)
+	logger, err := New(logPath)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { logger.Close() })
 
-	server.SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
-	t.Cleanup(server.ResetStateTouchPath)
+	SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
+	t.Cleanup(ResetStateTouchPath)
 
-	return server.New("127.0.0.1:0", appEnv, &telemetry.Metrics{}, logger)
+	return New("127.0.0.1:0", appEnv, &Metrics{}, logger)
 }

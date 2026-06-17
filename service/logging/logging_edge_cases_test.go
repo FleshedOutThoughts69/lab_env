@@ -10,23 +10,21 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"lab_env/service/logging"
 )
 
 // TestLogger_SpecialChars_ProperlyEscaped verifies that log messages and
 // key-value pairs containing JSON special characters are properly escaped.
 //
 // A log line like {"msg":"error: "bad" value"} is invalid JSON and would
-// fail L-002 (last line valid JSON). The json.Marshal in logging.go handles
+// fail L-002 (last line valid JSON). The json.Marshal in go handles
 // this, but this test confirms it explicitly.
 func TestLogger_SpecialChars_ProperlyEscaped(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	defer logger.Close()
 
@@ -75,9 +73,9 @@ func TestLogger_Close_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	defer func() {
@@ -97,9 +95,9 @@ func TestLogger_WriteAfterClose_DoesNotPanic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	logger.Close()
 
@@ -119,9 +117,9 @@ func TestLogger_Levels_ProduceCorrectLevelField(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	logger, err := logging.New(path)
+	logger, err := New(path)
 	if err != nil {
-		t.Fatalf("logging.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	logger.Info("info message")
