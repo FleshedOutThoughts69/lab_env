@@ -78,6 +78,19 @@ func (c *StatusCmd) Run() output.CommandResult {
 	}
 	detection := state.Detect(input)
 
+	// Step 3b: if the state file was unreadable (missing or corrupt), write
+	// a fresh file from the detected runtime state. This ensures that a single
+	// lab status call recovers from both missing and corrupt state files.
+	if sf == nil && !state.IsUnknown(detection) {
+		sf = state.Fresh(detection.Detected)
+		sf.ClassificationValid = true
+		now := time.Now().UTC()
+		sf.LastStatusAt = &now
+		if err := c.store.Write(sf); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to write new state file: %v\n", err)
+		}
+	}
+
 	// Step 4: reconcile state file if detected state differs, holding the lock
 	// to prevent races with concurrent mutation commands.
 	needsWrite := (detection.Reconciled && sf != nil) ||
@@ -146,7 +159,7 @@ func buildStatusResult(
 	}
 
 	if sf != nil {
-       r.ClassificationValid = sf.ClassificationValid
+		r.ClassificationValid = sf.ClassificationValid
 	}
 
 	// Last validate / last reset from state file.
