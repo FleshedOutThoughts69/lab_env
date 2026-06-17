@@ -19,18 +19,25 @@ import (
 // authorized to reconcile observed runtime reality with recorded
 // control-plane classification.
 //
-// It does NOT acquire the mutation lock (read-path with reconciliation authority).
-// It DOES update state.json if the detected state differs from the recorded state.
+// It acquires the mutation lock before writing state.json to prevent
+// read‑modify‑write races with concurrent mutation commands.
 type StatusCmd struct {
 	obs    conformance.Observer
 	runner *conformance.Runner
 	store  *state.Store
 	audit  *executor.AuditLogger
+	lock   *executor.Lock
 }
 
 // NewStatusCmd returns a StatusCmd wired to the provided dependencies.
 func NewStatusCmd(obs conformance.Observer, runner *conformance.Runner, store *state.Store, audit *executor.AuditLogger) *StatusCmd {
-	return &StatusCmd{obs: obs, runner: runner, store: store, audit: audit}
+	return &StatusCmd{
+		obs:    obs,
+		runner: runner,
+		store:  store,
+		audit:  audit,
+		lock:   executor.NewLock(),
+	}
 }
 
 // Run executes the status command and returns a structured result.
@@ -71,30 +78,37 @@ func (c *StatusCmd) Run() output.CommandResult {
 	}
 	detection := state.Detect(input)
 
-	// Step 4: reconcile state file if detected state differs.
-	if detection.Reconciled && sf != nil {
-		sf.State = detection.Detected
-		sf.ClassificationValid = true
-		now := time.Now().UTC()
-		sf.LastStatusAt = &now
+	// Step 4: reconcile state file if detected state differs, holding the lock
+	// to prevent races with concurrent mutation commands.
+	needsWrite := (detection.Reconciled && sf != nil) ||
+		(sf != nil && !sf.ClassificationValid && !state.IsUnknown(detection))
+	if needsWrite && sf != nil {
+		if err := c.lock.Acquire(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not acquire lock to reconcile state: %v\n", err)
+		} else {
+			defer c.lock.Release()
 
-		if c.audit != nil {
-			c.audit.LogReconciliation(detection.PriorState, detection.Detected)
-		}
-		if err := c.store.Write(sf); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to write reconciled state: %v\n", err)
-		}
-	}
+			if detection.Reconciled {
+				sf.State = detection.Detected
+				sf.ClassificationValid = true
+				now := time.Now().UTC()
+				sf.LastStatusAt = &now
 
-	// Step 4b: if classification was invalidated (e.g., by an interrupt)
-	// but we successfully re‑detected a valid state, restore the validity flag.
-	// This is the exit‑code‑4 recovery path defined in control‑plane‑contract §3.6.
-	if sf != nil && !sf.ClassificationValid && !state.IsUnknown(detection) {
-		sf.ClassificationValid = true
-		now := time.Now().UTC()
-		sf.LastStatusAt = &now
-		if err := c.store.Write(sf); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to update classification validity: %v\n", err)
+				if c.audit != nil {
+					c.audit.LogReconciliation(detection.PriorState, detection.Detected)
+				}
+				if err := c.store.Write(sf); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to write reconciled state: %v\n", err)
+				}
+			} else if !sf.ClassificationValid && !state.IsUnknown(detection) {
+				// Step 4b: restore classification validity after interrupt.
+				sf.ClassificationValid = true
+				now := time.Now().UTC()
+				sf.LastStatusAt = &now
+				if err := c.store.Write(sf); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to update classification validity: %v\n", err)
+				}
+			}
 		}
 	}
 
