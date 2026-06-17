@@ -4,6 +4,9 @@
 package main
 
 import (
+	"os"
+    "os/signal"
+    "syscall"
 	"fmt"
 	"io"
 	"lab_env/cmd"
@@ -54,12 +57,29 @@ func (a *App) Run(args []string) int {
 	runner := conformance.NewRunner()
 	store := state.NewStore()
 
+	// Build audit logger.
+	invocation := "lab " + joinArgs(remaining)
+	audit := executor.NewAuditLogger(invocation)
+
+	// ---------------------------------------------------------------
+	// Interrupt handler: on SIGINT/SIGTERM, invalidate classification
+	// and exit 4. This implements control-plane-contract §3.6.
+	// ---------------------------------------------------------------
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		// Best-effort: write classification_valid=false and audit entry.
+		store.InvalidateClassification() //nolint:errcheck
+		if audit != nil {
+			audit.LogInterrupt("Systemctl", false) // generic interrupt
+		}
+		os.Exit(4)
+	}()
+
 	// Dispatch.
 	command := remaining[0]
 	subArgs := remaining[1:]
-
-	invocation := "lab " + joinArgs(remaining)
-	audit := executor.NewAuditLogger(invocation)
 
 	var result output.CommandResult
 
