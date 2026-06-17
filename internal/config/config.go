@@ -34,7 +34,7 @@ const (
 	LockPath = "/var/lib/lab/lab.lock"
 
 	// BootstrapScript is the provisioning script path.
-	BootstrapScript = "/opt/lab_env/bootstrap.sh"
+	BootstrapScript = "/opt/lab-env/scripts/bootstrap.sh"
 )
 
 // ── Canonical environment paths (canonical-environment.md §2.3) ──────────────
