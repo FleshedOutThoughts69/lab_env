@@ -1,4 +1,5 @@
 package cmd
+
 // fault_test.go enforces the fault apply command contract from
 // control-plane-contract §4.5:
 //   - unknown fault ID rejected before lock acquisition (precondition 1)
@@ -12,91 +13,16 @@ package cmd
 //   - Apply success writes state + audit entry
 
 import (
-	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	. "lab_env/cmd"
-	"lab_env/internal/catalog"
+	"lab_env/internal/catalog" 
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
 	"lab_env/internal/output"
 	"lab_env/internal/state"
 )
-
-// ── stub executor ─────────────────────────────────────────────────────────────
-
-// trackingExecutor records mutation calls and can inject faults.
-type trackingExecutor struct {
-	stubObserver
-	mutationCalls []string
-	applyError    error // if non-nil, returned from the fault's Apply
-}
-
-func newTrackingExecutor() *trackingExecutor {
-	te := &trackingExecutor{}
-	te.serviceActive = map[string]bool{"app.service": true, "nginx": true}
-	te.portListening = map[string]bool{"127.0.0.1:8080": true}
-	te.endpointStatus = map[string]int{}
-	return te
-}
-
-func (t *trackingExecutor) WriteFile(path string, _ []byte, _ fs.FileMode, _, _ string) error {
-	t.mutationCalls = append(t.mutationCalls, "WriteFile:"+path)
-	return nil
-}
-func (t *trackingExecutor) Chmod(path string, _ fs.FileMode) error {
-	t.mutationCalls = append(t.mutationCalls, "Chmod:"+path)
-	return nil
-}
-func (t *trackingExecutor) Chown(path, _, _ string) error {
-	t.mutationCalls = append(t.mutationCalls, "Chown:"+path)
-	return nil
-}
-func (t *trackingExecutor) Remove(path string) error {
-	t.mutationCalls = append(t.mutationCalls, "Remove:"+path)
-	return nil
-}
-func (t *trackingExecutor) MkdirAll(path string, _ fs.FileMode, _, _ string) error {
-	t.mutationCalls = append(t.mutationCalls, "MkdirAll:"+path)
-	return nil
-}
-func (t *trackingExecutor) Systemctl(action, unit string) error {
-	t.mutationCalls = append(t.mutationCalls, "Systemctl:"+action+":"+unit)
-	return nil
-}
-func (t *trackingExecutor) NginxReload() error {
-	t.mutationCalls = append(t.mutationCalls, "NginxReload")
-	return nil
-}
-func (t *trackingExecutor) RestoreFile(path string) error {
-	t.mutationCalls = append(t.mutationCalls, "RestoreFile:"+path)
-	return nil
-}
-func (t *trackingExecutor) RunMutation(cmd string, args ...string) error {
-	t.mutationCalls = append(t.mutationCalls, "RunMutation:"+cmd)
-	return nil
-}
-
-// trackingExecutor conformance.Observer methods (reuse stubObserver via embedding)
-
-// faultApplyReturns makes a single named fault return the given Apply error.
-// Uses a catalog entry's Apply function wrapped to inject the error.
-type injectErrorExecutor struct {
-	trackingExecutor
-	errorOnChmod bool
-}
-
-func (e *injectErrorExecutor) Chmod(path string, mode fs.FileMode) error {
-	e.mutationCalls = append(e.mutationCalls, "Chmod:"+path)
-	if e.errorOnChmod {
-		return fmt.Errorf("chmod failed: permission denied")
-	}
-	return nil
-}
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
@@ -420,6 +346,7 @@ func TestFaultApplyCmd_PreconditionCheckPasses_F010(t *testing.T) {
 		t.Errorf("P-001 should pass with healthy observer; got exit 3: %v", result.Err)
 	}
 }
+
 func TestFaultList_UsesAllDefs(t *testing.T) {
 	cmd := NewFaultListCmd()
 	result := cmd.Run()

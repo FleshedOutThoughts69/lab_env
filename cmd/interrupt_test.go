@@ -1,4 +1,4 @@
-package cmd_test
+package cmd
 
 // interrupt_test.go proves the interrupt-path contract as a complete
 // cross-layer behavior. control-plane-contract §3.6.
@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	. "lab_env/cmd"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
 	"lab_env/internal/output"
@@ -131,7 +130,6 @@ func TestInterruptPath_Reset_FullContract(t *testing.T) {
 	resetCmd := NewResetCmd(sc.exec, runner, sc.exec, sc.store, sc.audit)
 
 	// Run reset in a goroutine — simulates real async execution
-	var result output.CommandResult
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -141,7 +139,7 @@ func TestInterruptPath_Reset_FullContract(t *testing.T) {
 		// In the current implementation, signal handling is in app.go;
 		// here we test the state-invalidation path directly by calling
 		// store.InvalidateClassification and verifying the downstream behavior.
-		result = resetCmd.Run("R2")
+		_ = resetCmd.Run("R2") // result assigned to _ to avoid unused variable
 	}()
 	wg.Wait()
 
@@ -425,7 +423,7 @@ func TestInterruptPath_ExitCode4_Semantics(t *testing.T) {
 
 	// Exit code 4 contract: state.json has classification_valid: false
 	// but state field is not BROKEN
-	if !sf.ClassificationValid == false {
+	if sf.ClassificationValid == false {
 		// This is the correct state after an exit-4 scenario
 	}
 

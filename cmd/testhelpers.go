@@ -1,23 +1,13 @@
 package cmd
 
-
-// testhelpers_test.go contains shared stub types and constructors
-// used across all cmd package tests. Centralizing here prevents
-// duplicate definitions across status_test, validate_test, fault_test,
-// and interrupt_test, which are all in package cmd_test.
-
 import (
 	"fmt"
 	"io/fs"
 	"time"
-
 	"lab_env/internal/conformance"
 )
 
 // ── stubObserver ──────────────────────────────────────────────────────────────
-// Implements conformance.Observer with configurable responses.
-// Zero value is safe: all methods return "unhealthy" defaults.
-
 type stubObserver struct {
 	serviceActive  map[string]bool
 	portListening  map[string]bool
@@ -50,12 +40,8 @@ func unhealthyObs() *stubObserver {
 	}
 }
 
-func (s *stubObserver) ServiceActive(unit string) (bool, error) {
-	return s.serviceActive[unit], nil
-}
-func (s *stubObserver) ServiceEnabled(unit string) (bool, error) {
-	return s.serviceActive[unit], nil
-}
+func (s *stubObserver) ServiceActive(unit string) (bool, error) { return s.serviceActive[unit], nil }
+func (s *stubObserver) ServiceEnabled(unit string) (bool, error) { return s.serviceActive[unit], nil }
 func (s *stubObserver) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
 	running := s.serviceActive["app.service"]
 	return conformance.ProcessStatus{Running: running}, nil
@@ -81,22 +67,12 @@ func (s *stubObserver) CheckEndpoint(url string, _ bool) (conformance.EndpointSt
 		Body:       body,
 	}, nil
 }
-func (s *stubObserver) ResolveHost(name string) (string, error) {
-	return "127.0.0.1", nil
-}
-func (s *stubObserver) Stat(path string) (fs.FileInfo, error) {
-	return nil, fmt.Errorf("stat %s: not available in stub", path)
-}
-func (s *stubObserver) ReadFile(path string) ([]byte, error) {
-	return nil, fmt.Errorf("readfile %s: not available in stub", path)
-}
-func (s *stubObserver) RunCommand(cmd string, args ...string) (string, error) {
-	// Return stat-like output for filesystem checks
-	return "appuser:appuser 750", nil
-}
+func (s *stubObserver) ResolveHost(name string) (string, error)               { return "127.0.0.1", nil }
+func (s *stubObserver) Stat(path string) (fs.FileInfo, error)                  { return nil, fmt.Errorf("stub") }
+func (s *stubObserver) ReadFile(path string) ([]byte, error)                   { return nil, fmt.Errorf("stub") }
+func (s *stubObserver) RunCommand(cmd string, args ...string) (string, error) { return "appuser:appuser 750", nil }
 
 // ── mockFileInfo ──────────────────────────────────────────────────────────────
-
 type mockFileInfo struct {
 	size int64
 	mode fs.FileMode
@@ -110,87 +86,66 @@ func (m *mockFileInfo) IsDir() bool        { return false }
 func (m *mockFileInfo) Sys() interface{}   { return nil }
 
 // ── trackingExecutor ─────────────────────────────────────────────────────────
-// Implements executor.Executor minimally, recording calls for test assertions.
-
 type trackingExecutor struct {
-    serviceActive   map[string]bool
-    portListening   map[string]bool
-    endpointStatus  map[string]int
-    // Add other fields if needed
+	stubObserver
+	mutationCalls []string
 }
 
-func (t *trackingExecutor) ServiceActive(unit string) (bool, error) {
-    return t.serviceActive[unit], nil
+func newTrackingExecutor() *trackingExecutor {
+	te := &trackingExecutor{}
+	te.serviceActive = map[string]bool{"app.service": true, "nginx": true}
+	te.portListening = map[string]bool{"127.0.0.1:8080": true}
+	te.endpointStatus = map[string]int{}
+	return te
 }
-func (t *trackingExecutor) ServiceEnabled(unit string) (bool, error) {
-    return t.serviceActive[unit], nil
+
+func (t *trackingExecutor) WriteFile(path string, _ []byte, _ fs.FileMode, _, _ string) error {
+	t.mutationCalls = append(t.mutationCalls, "WriteFile:"+path)
+	return nil
 }
-func (t *trackingExecutor) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
-    return conformance.ProcessStatus{Running: t.serviceActive["app.service"]}, nil
+func (t *trackingExecutor) Chmod(path string, _ fs.FileMode) error {
+	t.mutationCalls = append(t.mutationCalls, "Chmod:"+path)
+	return nil
 }
-func (t *trackingExecutor) CheckPort(addr string) (conformance.PortStatus, error) {
-    return conformance.PortStatus{Listening: t.portListening[addr], Addr: addr}, nil
+func (t *trackingExecutor) Chown(path, _, _ string) error {
+	t.mutationCalls = append(t.mutationCalls, "Chown:"+path)
+	return nil
 }
-func (t *trackingExecutor) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
-    code, ok := t.endpointStatus[url]
-    if !ok {
-        return conformance.EndpointStatus{Reachable: false, StatusCode: 0}, nil
-    }
-    return conformance.EndpointStatus{StatusCode: code, Reachable: true}, nil
+func (t *trackingExecutor) Remove(path string) error {
+	t.mutationCalls = append(t.mutationCalls, "Remove:"+path)
+	return nil
 }
-// ... implement remaining executor.Executor methods as needed; for tests they can be no-ops.
-func (t *trackingExecutor) ResolveHost(name string) (string, error) { return "127.0.0.1", nil }
-func (t *trackingExecutor) Stat(path string) (fs.FileInfo, error) { return nil, fmt.Errorf("stub") }
-func (t *trackingExecutor) ReadFile(path string) ([]byte, error) { return nil, fmt.Errorf("stub") }
-func (t *trackingExecutor) RunCommand(cmd string, args ...string) (string, error) { return "", nil }
-func (t *trackingExecutor) Systemctl(cmd, unit string) error { return nil }
-func (t *trackingExecutor) NginxReload() error { return nil }
-func (t *trackingExecutor) WriteFile(path string, content []byte, mode os.FileMode) error { return nil }
-func (t *trackingExecutor) Chmod(path string, mode os.FileMode) error { return nil }
-func (t *trackingExecutor) Chown(path, user, group string) error { return nil }
-func (t *trackingExecutor) RestoreFile(path string) error { return nil }
-func (t *trackingExecutor) RunMutation(bin string, args ...string) error { return nil }
+func (t *trackingExecutor) MkdirAll(path string, _ fs.FileMode, _, _ string) error {
+	t.mutationCalls = append(t.mutationCalls, "MkdirAll:"+path)
+	return nil
+}
+func (t *trackingExecutor) Systemctl(action, unit string) error {
+	t.mutationCalls = append(t.mutationCalls, "Systemctl:"+action+":"+unit)
+	return nil
+}
+func (t *trackingExecutor) NginxReload() error {
+	t.mutationCalls = append(t.mutationCalls, "NginxReload")
+	return nil
+}
+func (t *trackingExecutor) RestoreFile(path string) error {
+	t.mutationCalls = append(t.mutationCalls, "RestoreFile:"+path)
+	return nil
+}
+func (t *trackingExecutor) RunMutation(cmd string, args ...string) error {
+	t.mutationCalls = append(t.mutationCalls, "RunMutation:"+cmd)
+	return nil
+}
 
 // ── injectErrorExecutor ──────────────────────────────────────────────────────
 type injectErrorExecutor struct {
-    serviceActive  map[string]bool
-    portListening  map[string]bool
-    endpointStatus map[string]int
-    // when true, certain operations return errors
-    failServiceActive bool
+	trackingExecutor
+	errorOnChmod bool
 }
 
-func (e *injectErrorExecutor) ServiceActive(unit string) (bool, error) {
-    if e.failServiceActive {
-        return false, fmt.Errorf("injected error")
-    }
-    return e.serviceActive[unit], nil
+func (e *injectErrorExecutor) Chmod(path string, mode fs.FileMode) error {
+	e.mutationCalls = append(e.mutationCalls, "Chmod:"+path)
+	if e.errorOnChmod {
+		return fmt.Errorf("chmod failed: permission denied")
+	}
+	return nil
 }
-// implement the rest similarly, mirroring trackingExecutor
-func (e *injectErrorExecutor) ServiceEnabled(unit string) (bool, error) {
-    return e.ServiceActive(unit)
-}
-func (e *injectErrorExecutor) CheckProcess(name, user string) (conformance.ProcessStatus, error) {
-    if e.failServiceActive {
-        return conformance.ProcessStatus{}, fmt.Errorf("injected")
-    }
-    return conformance.ProcessStatus{Running: e.serviceActive["app.service"]}, nil
-}
-func (e *injectErrorExecutor) CheckPort(addr string) (conformance.PortStatus, error) {
-    return conformance.PortStatus{Listening: e.portListening[addr], Addr: addr}, nil
-}
-func (e *injectErrorExecutor) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
-    code, _ := e.endpointStatus[url]
-    return conformance.EndpointStatus{StatusCode: code, Reachable: code != 0}, nil
-}
-func (e *injectErrorExecutor) ResolveHost(name string) (string, error) { return "127.0.0.1", nil }
-func (e *injectErrorExecutor) Stat(path string) (fs.FileInfo, error) { return nil, fmt.Errorf("stub") }
-func (e *injectErrorExecutor) ReadFile(path string) ([]byte, error) { return nil, fmt.Errorf("stub") }
-func (e *injectErrorExecutor) RunCommand(cmd string, args ...string) (string, error) { return "", nil }
-func (e *injectErrorExecutor) Systemctl(cmd, unit string) error { return nil }
-func (e *injectErrorExecutor) NginxReload() error { return nil }
-func (e *injectErrorExecutor) WriteFile(path string, content []byte, mode fs.FileMode) error { return nil }
-func (e *injectErrorExecutor) Chmod(path string, mode fs.FileMode) error { return nil }
-func (e *injectErrorExecutor) Chown(path, user, group string) error { return nil }
-func (e *injectErrorExecutor) RestoreFile(path string) error { return nil }
-func (e *injectErrorExecutor) RunMutation(bin string, args ...string) error { return nil }

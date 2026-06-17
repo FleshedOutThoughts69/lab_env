@@ -24,7 +24,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-
+	"strings"
+	"io/fs"
 	"lab_env/internal/catalog"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
@@ -49,8 +50,9 @@ func TestFaultRecover_RestoresExactContent(t *testing.T) {
 			if applyErr != nil && !rec.hasAnyWrite() {
 				t.Skipf("%s Apply returned error with no writes (precondition check) — skip", impl.Def.ID)
 			}
-
+			
 			// Recover the fault — capture what it restores
+			rec.SetPhase("recover")
 			recoverErr := impl.Recover(rec)
 			if recoverErr != nil {
 				t.Fatalf("%s Recover returned error: %v", impl.Def.ID, recoverErr)
@@ -193,13 +195,39 @@ func (r *faultRecorder) Remove(path string) error {
 	return nil
 }
 
-func (r *faultRecorder) MkdirAll(path string, _ os.FileMode) error { return nil }
+func (r *faultRecorder) MkdirAll(path string, _ fs.FileMode, _, _ string) error { return nil }
 
-func (r *faultRecorder) Systemctl(action, unit string) error { return nil }
+func (r *faultRecorder) Systemctl(action, unit string) error {
+	// Simulate log file recreation when the app is restarted (F‑010 Recover).
+	if action == "restart" && unit == "app" {
+		canonical, ok := makeDefaultFiles()["/var/log/app/app.log"]
+		if ok {
+			r.files["/var/log/app/app.log"] = canonical
+			if r.phase != "apply" {
+				r.recoverWrites["/var/log/app/app.log"] = canonical
+			}
+		}
+	}
+	return nil
+}
 
 func (r *faultRecorder) NginxReload() error { return nil }
 
-func (r *faultRecorder) RunMutation(cmd string, args ...string) error { return nil }
+func (r *faultRecorder) RunMutation(cmd string, args ...string) error {
+	// Simulate the exact shell command used by F‑018 Recover.
+	if cmd == "sh" && len(args) == 2 && args[0] == "-c" && strings.HasPrefix(args[1], "rm -f /var/lib/app/file_") {
+		prefix := "/var/lib/app/file_"
+		for path := range r.files {
+			if strings.HasPrefix(path, prefix) {
+				delete(r.files, path)
+				if r.phase != "apply" {
+					r.recoverWrites[path] = nil // nil = removed
+				}
+			}
+		}
+	}
+	return nil
+}
 
 // Observer methods (read-only)
 func (r *faultRecorder) Stat(path string) (os.FileInfo, error) {
