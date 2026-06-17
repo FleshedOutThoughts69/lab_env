@@ -158,6 +158,18 @@ Post-reset validation always runs; failure produces exit 1 with both `Value` and
 
 ---
 
+## `cmd/generate_spec_index/main.go`
+
+**Responsibility:** entry point for regenerating the Specification → Implementation Index markdown section. Calls `invariants.GenerateSpecIndex()`, which reads the index data from `internal/invariants/spec_index.go` and updates `docs/codebase-reference.md`.
+
+**Usage:** `go run ./cmd/generate_spec_index/main.go` or `go run lab_env/cmd/generate_spec_index` from the module root.
+
+**Replacement logic:** delegated to `internal/invariants/spec_index.go` (`GenerateSpecIndex` function). The generator binary exists solely as a `main` package to satisfy Go's requirement that `go generate` run a `main` package. All logic lives in the library.
+
+**Invariant:** the committed markdown section must always match the output of `GenerateMarkdown()`. Enforced by `TestSpecIndex_MarkdownIsUpToDate`.
+
+---
+
 ## `cmd/testhelpers_test.go`
 
 **Responsibility:** shared test infrastructure for all cmd tests. Never imported by production code.
@@ -648,6 +660,18 @@ Package stub. No production code. Exists to declare the package.
 
 ---
 
+## `internal/invariants/spec_index.go`
+
+**Responsibility:** declare the authoritative SpecIndex — the reverse mapping from semantic model document sections to the source files that implement them. This file is the single source of truth for the Specification → Implementation Index. It also exports `GenerateMarkdown()` (produces the markdown table) and `GenerateSpecIndex()` (updates `docs/codebase-reference.md`).
+
+**Data:** `var SpecIndex = []SpecMapping{ ... }` — one entry per document section, listing `ImplFiles` (production code) and `TestFiles` (enforcing tests). Every file reference is verified by `TestSpecIndex_AllReferencedFilesExist`.
+
+**Markdown generation:** `func GenerateMarkdown() string` produces the canonical markdown for the index section, wrapped in HTML comment guards for deterministic extraction. `func GenerateSpecIndex() error` performs the actual file replacement.
+
+**Generator binary:** `cmd/generate_spec_index/main.go` calls `GenerateSpecIndex()`.
+
+---
+
 ## `internal/invariants/spec_index_test.go`
 
 **Responsibility:** verify the integrity of the reverse index declared in `spec_index.go`. The 14 tests collectively guarantee that the index is accurate, complete, structurally sound, synchronized with the markdown document, and immune to silent drift.
@@ -667,28 +691,6 @@ Package stub. No production code. Exists to declare the package.
 - `TestSpecIndex_NoUndocumentedSections` — every `§`-prefixed top-level heading in each spec document has a corresponding `SpecIndex` entry; fails hard if a document is not found on disk; minimum-headings guard prevents vacuous pass
 - `TestSpecIndex_EntriesFollowDocumentOrder` — `SpecIndex` entries for each document appear in the same order as sections appear in the document; fails hard if document not found
 - `TestSpecIndex_ConstraintPathsExist` — file paths embedded in `Constraints` strings are verified on disk
-
----
-
-## `internal/invariants/generate_spec_index.go`
-
-**Responsibility:** regenerate the `Specification → Implementation Index` section of `docs/codebase-reference.md` from the `SpecIndex` declared in `spec_index.go`. Build tag: `//go:build ignore` — not compiled into the test binary.
-
-**Usage:**
-```bash
-go run internal/invariants/generate_spec_index.go
-# or via go:generate directive in spec_index.go:
-go generate ./internal/invariants/
-```
-
-**Replacement logic:** finds the `BEGIN GENERATED` and `END GENERATED` HTML comment guards in `codebase-reference.md` and replaces only the content between them. Content before the `BEGIN` guard and after the `END` guard is preserved unchanged. Falls back to finding the old `## Specification → Implementation Index` heading if guards are not yet present (first-generation case).
-
-**CI integration:** the file's header includes the exact CI recipe to prevent stale markdown from being committed:
-```bash
-go generate ./internal/invariants/
-git diff --exit-code docs/codebase-reference.md || \
-  (echo "codebase-reference.md is out of sync; run go generate" && exit 1)
-```
 
 ---
 
@@ -1121,4 +1123,3 @@ All 12 fields must be present in every snapshot. `chaos_modes` is never null (em
 | §8 | State Control | `cmd/reset.go` · `scripts/reset.sh` | `live_fault_matrix_test.go` |  |
 
 <!-- END GENERATED: Specification → Implementation Index -->
-
