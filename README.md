@@ -2,7 +2,7 @@
 
 A deterministic single-node chaos engineering lab: a miniature reliability control plane for fault injection, conformance validation, and state reconciliation — built as a spec-derived systems engineering exercise.
 
-> **Execution status:** unit and contract test suite complete (268 tests across 42 files). Live VM integration is the current phase.
+> **Execution status:** unit and contract test suite complete (all planned Phase A tests written and passing). Integration tests are gated behind `//go:build integration` and will run on the VM. H‑001 (endpoint code guessing) is resolved. Golden fixtures are regenerated and stable. The project is ready for live VM integration testing.
 
 ---
 
@@ -255,23 +255,27 @@ All enforced by named tests. Any violation causes a specific test to fail.
 | No mutation through Observer interface | `TestObserver_DoesNotHaveMutationMethods` |
 | State set contains exactly six defined states | `TestState_ValidStates_ContainsAll` |
 | All PreconditionCheck IDs resolve to real checks | `TestInvariant_PreconditionChecks_AreValidCheckIDs` |
+| RunCommand on Observer; RunMutation on Executor only | `TestRunCommand_AvailableOnObserver`, `TestRunMutation_RequiresExecutor` |
+| Fault Apply receives Executor, not Observer | `TestFaultApply_ReceivesExecutor_NotObserver` |
+| Status endpoint codes are observer‑derived, never guessed | `TestRenderStatus_JSON_EndpointCodesNotGuessed` |
 
 ---
 
 ## Test suite
 
-42 test files, 268 test functions across both modules. The suite is a specification enforcement system, not a coverage metric. Each test references the document and section it enforces.
+The unit test suite is fully green and complete per the Phase A testing plan. Integration tests (lock‑dependent, live‑OS signals, subprocess‑based) are separated behind `//go:build integration` tags and will only run on a provisioned VM with `LAB_TEST_MODE=live`.
 
 ```
 internal/conformance/runner_test.go        — classification semantics, dependency ordering
 internal/conformance/runner_edge_cases_test.go — severity boundary conditions
 internal/state/detect_test.go              — adversarial matrix: all §4.3 conflict cases
-internal/state/signal_combinations_test.go — full detection input space
+internal/state/detect_combinations_test.go — full detection input space
 internal/state/state_test.go               — six-state enumeration, transition guards
 internal/state/store_test.go               — atomic write, schema, corruption recovery
 internal/state/store_edge_cases_test.go    — edge cases: partial writes, concurrent access
 internal/executor/audit_test.go            — mutation audit completeness invariant
-internal/executor/lock_test.go             — lock contract: acquire, release, stale, live
+internal/executor/lock_test.go             — lock contract: acquire, release, stale, live (unit)
+internal/executor/lock_integration_test.go — lock tests requiring /var/lib/lab (integration)
 internal/executor/boundary_test.go         — Observer ≠ Executor interface separation
 internal/executor/embed_test.go            — embedded canonical file integrity
 internal/catalog/catalog_test.go           — catalog completeness, postcondition validity
@@ -282,22 +286,24 @@ internal/output/golden_test.go             — frozen JSON contract fixtures
 internal/output/output_quality_test.go     — UTF-8, compactness, no double-encoding
 cmd/status_test.go                         — reconciliation authority contract
 cmd/validate_test.go                       — observation-only contract
-cmd/fault_test.go                          — precondition/PreconditionChecks/atomicity/audit
-cmd/interrupt_test.go                      — interrupt path: all 8 contract points
+cmd/fault_test.go                          — precondition/PreconditionChecks/atomicity/audit (unit)
+cmd/fault_integration_test.go              — fault‑apply tests needing the lock directory (integration)
+cmd/interrupt_test.go                      — interrupt path: all 8 contract points (unit)
+cmd/interrupt_integration_test.go          — interrupt/status tests needing the lock directory (integration)
 cmd/live_interrupt_test.go  (integration)  — real SIGINT/SIGTERM against live lab process
 cmd/live_fault_matrix_test.go (integration)— full 14-fault apply→validate→reset cycle on real VM
 service/*/                                  — 12 test files covering all service packages
 ```
 
 ```bash
-go test ./...                                       # all unit tests
+go test ./...                                       # all unit tests (silent – no permission-denied noise)
 go test ./internal/invariants/...                   # cross-document invariants
 go test -race ./...                                 # with race detector
 UPDATE_GOLDEN=1 go test ./internal/output/...       # regenerate golden fixtures
 
-# Integration tests (require live VM):
-LAB_TEST_MODE=live go test -v -run TestLiveInterrupt ./cmd/...
-LAB_TEST_MODE=live go test -v -run TestLiveFaultMatrix ./cmd/...
+# Integration tests (require live VM and LAB_TEST_MODE=live):
+LAB_TEST_MODE=live go test -tags=integration -v -run TestLiveInterrupt ./cmd/...
+LAB_TEST_MODE=live go test -tags=integration -v -run TestLiveFaultMatrix ./cmd/...
 ```
 
 ---
@@ -318,7 +324,10 @@ lab-env/
 │   ├── status_test.go
 │   ├── validate_test.go
 │   ├── fault_test.go
+│   ├── fault_integration_test.go    # integration: fault apply tests needing lock directory
 │   ├── interrupt_test.go
+│   ├── interrupt_integration_test.go # integration: interrupt/status tests needing lock directory
+│   ├── integration_test.go          # TestMain guard for integration tests
 │   ├── live_interrupt_test.go       # integration: real SIGINT/SIGTERM tests
 │   ├── live_fault_matrix_test.go    # integration: full fault catalog on real VM
 │   └── testhelpers_test.go
@@ -337,11 +346,14 @@ lab-env/
 │   │   ├── real.go                  # real system mutations via sudo
 │   │   ├── audit.go                 # append-only audit log writer
 │   │   ├── lock.go                  # advisory mutex (/var/lib/lab/lab.lock)
-│   │   └── canonical_files.go       # embedded R2 restore targets
+│   │   ├── canonical_files.go       # embedded R2 restore targets
+│   │   ├── boundary_test.go         # Observer/Executor boundary tests (6 new tests)
+│   │   └── lock_integration_test.go # integration: lock tests requiring /var/lib/lab
 │   ├── state/
 │   │   ├── state.go                 # State type, All(), IsValid(), transition guards
 │   │   ├── store.go                 # state.json atomic read/write
-│   │   └── detect.go                # runtime re-detection algorithm
+│   │   ├── detect.go                # runtime re-detection algorithm
+│   │   └── detect_combinations_test.go # full detection input space tests
 │   ├── output/
 │   │   ├── model.go                 # result types (StatusResult, ValidateResult, …)
 │   │   └── render.go                # human and JSON renderers
@@ -354,7 +366,9 @@ lab-env/
 │   ├── invariants/
 │   │   ├── doc.go
 │   │   ├── invariants_test.go       # cross-document invariants
-│   │   └── architecture_test.go     # import boundary enforcement
+│   │   ├── architecture_test.go     # import boundary enforcement
+│   │   ├── spec_index.go            # specification-to-implementation index
+│   │   └── spec_index_test.go       # index validation and markdown sync
 │   └── testutil/
 │       └── interrupt.go             # interrupt test helpers
 ├── testdata/
@@ -385,7 +399,7 @@ lab-env/
     ├── portfolio-presentation-package.md
     ├── provisioning-blueprint.md    # idempotency strategy, failure recovery
     ├── recovery-playbook.md         # 9 hostile-state drills
-    └── testing-plan-revised.md      # Phase 0→A→B→C→D test plan
+    └── testing-plan.md              # Phase 0→A→B→C→D test plan (Phase 0 & A complete)
 ```
 
 ---
@@ -417,7 +431,7 @@ Runs as `appuser:appuser`, binds to `127.0.0.1:8080`, proxied by nginx on ports 
 | `docs/recovery-playbook.md` | 9 hostile-state drills with 7-point verification checklist |
 | `docs/operational-trace-spec.md` | 13 ordered event traces for every command |
 | `docs/golden-baseline-ledger.md` | Frozen output surfaces, fault table, check table |
-| `docs/testing-plan-revised.md` | Phase 0→A→B→C→D test plan |
+| `docs/testing-plan.md` | Phase 0→A→B→C→D test plan (Phase 0 & A complete, ready for VM integration) |
 | `docs/extension-boundary-note.md` | Change gates: required steps and forbidden shortcuts for every extension type |
 
 ---
