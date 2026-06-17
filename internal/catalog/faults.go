@@ -158,6 +158,9 @@ func faultF003() *FaultImpl {
 			if err := exec.Chmod(cfg.ConfigPath, cfg.ModeConfig); err != nil {
 				return err
 			}
+			if err := exec.Systemctl("reset-failed", "app"); err != nil {
+				// reset-failed returns non-zero if the service wasn't in failed state — ignore
+			}
 			return exec.Systemctl("restart", "app")
 		},
 	}
