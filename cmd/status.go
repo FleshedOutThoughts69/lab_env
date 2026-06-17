@@ -145,6 +145,10 @@ func buildStatusResult(
 		}
 	}
 
+	if sf != nil {
+       r.ClassificationValid = sf.ClassificationValid
+	}
+
 	// Last validate / last reset from state file.
 	if sf != nil {
 		if sf.LastValidate != nil {

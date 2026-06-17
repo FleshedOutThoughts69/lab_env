@@ -15,15 +15,16 @@ import (
 // StatusResult is the structured result of lab status.
 // Defined in control-plane-contract §4.1.
 type StatusResult struct {
-	State       state.State        `json:"state"`
-	ActiveFault *FaultRef          `json:"active_fault"`
-	Services    map[string]SvcInfo `json:"services"`
-	Ports       []PortInfo         `json:"ports"`
-	Endpoints   map[string]int     `json:"endpoints"`
-	LastValidate *ValidateSummary  `json:"last_validate"`
-	LastReset    *ResetSummary     `json:"last_reset"`
-	Reconciled   bool              `json:"reconciled,omitempty"`
-	Unknown      bool              `json:"unknown,omitempty"`
+    State              state.State        `json:"state"`
+    ActiveFault        *FaultRef          `json:"active_fault"`
+    Services           map[string]SvcInfo `json:"services"`
+    Ports              []PortInfo         `json:"ports"`
+    Endpoints          map[string]int     `json:"endpoints"`
+    LastValidate       *ValidateSummary   `json:"last_validate"`
+    LastReset          *ResetSummary      `json:"last_reset"`
+    Reconciled         bool               `json:"reconciled,omitempty"`
+    Unknown            bool               `json:"unknown,omitempty"`
+    ClassificationValid bool              `json:"classification_valid"`   // ← add this line
 }
 
 // ValidateResult is the structured result of lab validate.
