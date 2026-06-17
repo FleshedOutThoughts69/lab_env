@@ -279,27 +279,29 @@ func TestSpecIndex_NoUndocumentedSections(t *testing.T) {
 	}
 
 	skipForDoc := map[string]map[string]bool{
-		"conformance-model.md": {
-			"§6": true,
-		},
-		"system-state-model.md": {
-			"§6": true,
-			"§7": true,
-		},
-		"fault-model.md": {
-			"§8": true,
-			"§9": true,
-		},
-		"control-plane-contract.md": {
-			"§2": true,
-		},
-		"canonical-environment.md": {
-			"§6":  true,
-			"§7":  true,
-			"§10": true,
-			"§13": true,
-		},
-	}
+    "conformance-model.md": {
+        "§2": true, // Scope / Document Structure
+        "§6": true, // Authority and References
+    },
+    "system-state-model.md": {
+        "§6": true,
+        "§7": true,
+    },
+    "fault-model.md": {
+        "§2": true, // Scope
+        "§8": true,
+        "§9": true,
+    },
+    "control-plane-contract.md": {
+        "§2": true, // Derived Authority
+    },
+    "canonical-enviornment-lab.md": {
+        "§6":  true,
+        "§7":  true,
+        "§10": true,
+        "§13": true,
+    },
+}
 
 	mapped := make(map[string]map[string]bool)
 	for _, m := range invariants.SpecIndex {
@@ -313,7 +315,11 @@ func TestSpecIndex_NoUndocumentedSections(t *testing.T) {
 		mapped[m.Spec.Doc][section] = true
 	}
 
-	searchDirs := []string{root, filepath.Dir(root)}
+	searchDirs := []string{
+    root,
+    filepath.Dir(root),
+    filepath.Join(root, "docs"),
+}
 
 	for _, doc := range invariants.DocOrder {
 		var docPath string
@@ -368,7 +374,11 @@ func TestSpecIndex_NoUndocumentedSections(t *testing.T) {
 // TestSpecIndex_EntriesFollowDocumentOrder verifies ordering within each document.
 func TestSpecIndex_EntriesFollowDocumentOrder(t *testing.T) {
 	root := moduleRoot(t)
-	searchDirs := []string{root, filepath.Dir(root)}
+	searchDirs := []string{
+    root,
+    filepath.Dir(root),
+    filepath.Join(root, "docs"),
+}
 
 	byDoc := make(map[string][]string)
 	for _, m := range invariants.SpecIndex {

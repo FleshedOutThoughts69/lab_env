@@ -1052,27 +1052,16 @@ All 12 fields must be present in every snapshot. `chaos_modes` is never null (em
 ## Specification → Implementation Index
 
 > **Source of truth:** `internal/invariants/spec_index.go` — the Go data structure that backs this table.
-> Every file reference is verified by `TestSpecIndex_AllReferencedFilesExist` on every test run.
-> The markdown in this section is kept in sync by `TestSpecIndex_MarkdownIsUpToDate`.
->
-> **Integrity guarantee:** the CI pipeline runs `TestSpecIndex*` on every push. A passing build means all mappings are verified.
->
-> **To update:** edit `internal/invariants/spec_index.go`, then run:
-> ```
-> go generate ./internal/invariants/
-> ```
-> **Notation:** `→ (test-only)` = enforced by tests only · `→ (cross-reference)` = points to other documents · `constraints:` = layered enforcement
-
 ---
 
 ### `conformance-model.md`
 
 | Section | Title | Primary implementation | Enforcing tests | Notes |
 |---|---|---|---|---|
-| §3 | Check Catalog | `internal/conformance/check.go` · `internal/conformance/catalog.go` | `runner_test.go` · `catalog_test.go` | §3.1 defines the Check schema; §3.2–§3.7 are the catalog entries themselves |
-| §4 | Validation Semantics | `internal/conformance/result.go` · `internal/conformance/runner.go` | `runner_test.go` · `runner_edge_cases_test.go` | §4.1 verdict rules → result.go; §4.4 ordering + dependent marking → runner.go; §4.7 output schema → output/model.go |
-| §4.7 | Validation Output Schema | `internal/output/model.go` · `internal/output/render.go` | `golden_test.go` · `render_test.go` | §4.7 is the output subset; the full in-memory representation is SuiteResult in result.go |
-| §5 | Model Completeness Condition | → (test-only) | `invariants_test.go` | Bidirectional completeness (FailingChecks ↔ fault catalog) enforced by TestInvariant_FaultFailingChecks_ExistInCatalog |
+| §3 | Check Catalog | `internal/conformance/check.go` · `internal/conformance/catalog.go` | `runner_test.go` · `catalog_test.go` |  |
+| §4 | Validation Semantics | `internal/conformance/result.go` · `internal/conformance/runner.go` | `runner_test.go` · `runner_edge_cases_test.go` |  |
+| §4.7 | Validation Output Schema | `internal/output/model.go` · `internal/output/render.go` | `golden_test.go` · `render_test.go` |  |
+| §5 | Model Completeness Condition | → (test-only) | `invariants_test.go` |  |
 
 ---
 
@@ -1080,10 +1069,10 @@ All 12 fields must be present in every snapshot. `chaos_modes` is never null (em
 
 | Section | Title | Primary implementation | Enforcing tests | Notes |
 |---|---|---|---|---|
-| §2 | State Definitions | `internal/state/state.go` | `state_test.go` | Six constants, invariant methods (RequiresActiveFault, ForbidsActiveFault, CanApplyFault, CanReset) all in state.go |
-| §3 | Transition Model | `cmd/fault.go` · `cmd/reset.go` · `internal/state/store.go` · `internal/state/state.go` | `fault_test.go` · `interrupt_test.go` · `state_test.go` | Logical atomicity (§3.1) → store.go; guard checks (§3.4) → state.go; transitions themselves → cmd/fault.go + cmd/reset.go |
-| §4 | State Detection | `internal/state/detect.go` · `cmd/status.go` | `detect_test.go` · `signal_combinations_test.go` · `status_test.go` | §4.1 authority precedence + §4.2 algorithm + §4.3 four conflict cases all in detect.go; §4.4 UNKNOWN → exit 5 in status.go |
-| §5 | Constraint Graph | `internal/state/state.go` · `internal/state/store.go` | `state_test.go` · `store_test.go` · `invariants_test.go` | I-2 (active_fault constraint) → state.go; I-1 (classification_valid) + I-3 (history cap) → store.go |
+| §2 | State Definitions | `internal/state/state.go` | `state_test.go` |  |
+| §3 | Transition Model | `cmd/fault.go` · `cmd/reset.go` · `internal/state/store.go` · `internal/state/state.go` | `fault_test.go` · `interrupt_test.go` · `state_test.go` |  |
+| §4 | State Detection | `internal/state/detect.go` · `cmd/status.go` | `detect_test.go` · `store_test.go` · `status_test.go` |  |
+| §5 | Constraint Graph | `internal/state/state.go` · `internal/state/store.go` | `state_test.go` · `store_test.go` · `invariants_test.go` |  |
 
 ---
 
@@ -1091,12 +1080,12 @@ All 12 fields must be present in every snapshot. `chaos_modes` is never null (em
 
 | Section | Title | Primary implementation | Enforcing tests | Notes |
 |---|---|---|---|---|
-| §3 | Fault Schema | `internal/catalog/fault.go` | `catalog_test.go` · `content_integrity_test.go` | §3.1 FaultDef fields → fault.go; §3.2 PostconditionSpec → fault.go; FaultImpl (Apply/Recover) also in fault.go |
-| §4 | Mutation Rules | `cmd/fault.go` · `internal/catalog/faults.go` · `internal/executor/executor.go` | `fault_test.go` · `boundary_test.go` · `trace_test.go` | §4.1 executor requirement enforced structurally by type system; §4.2 atomicity contract → cmd/fault.go (ApplyFailure test) |
-| §5 | Pre/Post Conditions | `cmd/fault.go` · `internal/conformance/catalog.go` | `fault_test.go` · `invariants_test.go` | §5.1 standard precondition (steps 2-4) → fault.go; §5.2 PreconditionChecks (step 5) → fault.go + catalog.go; §5.3 postcondition → catalog/fault.go |
+| §3 | Fault Schema | `internal/catalog/fault.go` | `catalog_test.go` · `content_integrity_test.go` |  |
+| §4 | Mutation Rules | `cmd/fault.go` · `internal/catalog/faults.go` · `internal/executor/executor.go` | `fault_test.go` · `trace_test.go` · `embed_test.go` |  |
+| §5 | Pre/Post Conditions | `cmd/fault.go` · `internal/conformance/catalog.go` | `fault_test.go` · `invariants_test.go` |  |
 | §6 | Reversibility Semantics | `internal/catalog/faults.go` · `cmd/reset.go` | `catalog_test.go` · `content_integrity_test.go` |  |
-| §7 | Fault Catalog | `internal/catalog/faults.go` | `catalog_test.go` · `content_integrity_test.go` · `invariants_test.go` | §7.2 is the canonical catalog; each fault constructor is the mechanical projection of the corresponding §7.2 entry |
-| §10 | Baseline Network Behaviours | → (test-only) | `invariants_test.go` | B-001/B-002 are absent from the Go catalog by design; TestInvariant_NoBaselineFaultsInCatalog enforces absence |
+| §7 | Fault Catalog | `internal/catalog/faults.go` | `catalog_test.go` · `content_integrity_test.go` · `invariants_test.go` |  |
+| §10 | Baseline Network Behaviours | → (test-only) | `invariants_test.go` |  |
 
 ---
 
@@ -1104,31 +1093,32 @@ All 12 fields must be present in every snapshot. `chaos_modes` is never null (em
 
 | Section | Title | Primary implementation | Enforcing tests | Notes |
 |---|---|---|---|---|
-| §3 | Global Contract | `app.go` · `internal/output/render.go` · `internal/executor/lock.go` | `lock_test.go` · `lock_stale_system_process_test.go` · `render_test.go` | §3.2 exit code table is distributed across all cmd/ files; §3.6 signal handling is the interrupt path (see §4.5) |
-| §4.1 | lab status | `cmd/status.go` | `status_test.go` | Reconciliation authority; only command that updates state classification; LightweightRun + Detect |
-| §4.2 | lab validate | `cmd/validate.go` | `validate_test.go` | Observation-only; updates last_validate; must not update state field |
-| §4.3 | lab fault list | `cmd/fault.go` | `fault_test.go` | FaultListCmd; AllDefs() only; no executor dependency |
-| §4.4 | lab fault info | `cmd/fault.go` | `fault_test.go` | FaultInfoCmd; DefByID() only; no executor dependency |
-| §4.5 | lab fault apply | `cmd/fault.go` | `fault_test.go` · `interrupt_test.go` · `live_fault_matrix_test.go` | 6-step precondition sequence; PreconditionChecks (step 5); atomicity; audit; interrupt path (§3.6) handled here |
-| §4.6 | lab reset | `cmd/reset.go` | `live_fault_matrix_test.go` | R1/R2/R3 tiers; auto-select from fault ResetTier; post-reset validation always runs |
-| §4.7 | lab provision | `cmd/reset_provision_history.go` | — | Delegates to bootstrap.sh via RunMutation; idempotent |
-| §4.8 | lab history | `cmd/reset_provision_history.go` | — | Ring buffer read; reverse chronological; read-only; no lock |
-| §5 | Executor Behavioral Contract | `internal/executor/executor.go` · `internal/executor/real.go` | `audit_test.go` · `boundary_test.go` · `trace_test.go` · `embed_test.go` · `restore_test.go` | §5.1 capabilities → executor.go interface; §5.2 audit obligation → audit.go; §5.3 ordering → trace_test.go; §5.5 privilege → real.go (runSudo) |
-| §6 | State File Contract | `internal/state/store.go` | `store_test.go` · `store_edge_cases_test.go` | §6.1 schema → store.go File struct; §6.2 atomic write → Store.Write; §6.3 lock relationship → lock.go; §6.5 corruption recovery → Store.Read ErrStateFileCorrupt |
-| §7 | Audit Log Contract | `internal/executor/audit.go` | `audit_test.go` · `mutation_failure_test.go` | §7.2 entry schema + §7.3 entry types + §7.4 ordering guarantee all in audit.go |
-| §8 | Error Catalog | `cmd/fault.go` · `internal/executor/lock.go` | `fault_test.go` | Named error strings (ErrUnknownFaultID, ErrFaultAlreadyActive, ErrLockHeld, etc.) live in the files that return them |
-| §9 | Conformance with Semantic Models | → (cross-reference) | — | Cross-reference section only; points to conformance-model, system-state-model, and fault-model. No independent implementation. |
+| §3 | Global Contract | `app.go` · `internal/output/render.go` · `internal/executor/lock.go` | `lock_test.go` · `lock_stale_system_process_test.go` · `render_test.go` |  |
+| §4.1 | lab status | `cmd/status.go` | `status_test.go` |  |
+| §4.2 | lab validate | `cmd/validate.go` | `validate_test.go` |  |
+| §4.3 | lab fault list | `cmd/fault.go` | `fault_test.go` |  |
+| §4.4 | lab fault info | `cmd/fault.go` | `fault_test.go` |  |
+| §4.5 | lab fault apply | `cmd/fault.go` | `fault_test.go` · `interrupt_test.go` · `live_fault_matrix_test.go` |  |
+| §4.6 | lab reset | `cmd/reset.go` | `live_fault_matrix_test.go` |  |
+| §4.7 | lab provision | `cmd/reset_provision_history.go` | — |  |
+| §4.8 | lab history | `cmd/reset_provision_history.go` | — |  |
+| §5 | Executor Behavioral Contract | `internal/executor/executor.go` · `internal/executor/real.go` | `audit_test.go` · `trace_test.go` · `embed_test.go` · `restore_test.go` |  |
+| §6 | State File Contract | `internal/state/store.go` | `store_test.go` · `store_edge_cases_test.go` |  |
+| §7 | Audit Log Contract | `internal/executor/audit.go` | `audit_test.go` · `mutation_failure_test.go` |  |
+| §8 | Error Catalog | `cmd/fault.go` · `internal/executor/lock.go` | `fault_test.go` |  |
+| §9 | Conformance with Semantic Models | → (cross-reference) | — |  |
 
 ---
 
-### `canonical-environment.md`
+### `canonical-enviornment-lab.md`
 
 | Section | Title | Primary implementation | Enforcing tests | Notes |
 |---|---|---|---|---|
-| §2 | Canonical Environment Contract | constraints: constants (internal/config/config.go) + provisioning (scripts/bootstrap.sh) + verification (conformance checks) | `embed_test.go` | §2.2 users + §2.3 filesystem layout → config.go constants; §2.4 baseline service state → checked by conformance suite |
-| §3 | Go Service Interface Contract | `service/main.go` · `service/server/server.go` · `service/logging/logging.go` · `service/signals/signals.go` | `server_test.go` · `server_edge_test.go` · `signals_test.go` · `logging_test.go` | §3.1 startup contract → main.go; §3.2 process model → main.go (GOMAXPROCS, build flags); §3.3 endpoints → server.go; §3.4 logging → logging.go; §3.5 signals → main.go; §3.6 log file → logging.go |
-| §4 | Canonical Artifact Contents | constraints: embedded content (internal/config/*) + parser enforcement (service/config/config.go) + R2 restore (internal/executor/canonical_files.go) | `embed_test.go` · `config_test.go` · `config_edge_test.go` |  |
-| §5 | Provisioning Contract | constraints: script (scripts/bootstrap.sh) + idempotency strategy (docs/provisioning-blueprint.md) + final gate (lab validate) | `live_fault_matrix_test.go` | §5.4 idempotency contract → each step's guard condition in bootstrap.sh |
-| §8 | State Control | `cmd/reset.go` · `scripts/reset.sh` | `live_fault_matrix_test.go` | §8.1 reset tiers → cmd/reset.go executeTier; §8.2 reset.sh contract → scripts/reset.sh |
+| §2 | Canonical Environment Contract | constraints: constants (internal/config/config.go) + provisioning (scripts/bootstrap.sh) + verification (conformance checks) | `embed_test.go` |  |
+| §3 | Go Service Interface Contract | `service/main.go` · `service/server/server.go` · `service/logging/logging.go` · `service/signals/signals.go` | `server_test.go` · `server_edge_cases_test.go` · `signals_test.go` · `logging_test.go` |  |
+| §4 | Canonical Artifact Contents | constraints: embedded content (internal/config/*) + parser enforcement (service/config/config.go) + R2 restore (internal/executor/canonical_files.go) | `embed_test.go` · `config_test.go` |  |
+| §5 | Provisioning Contract | constraints: script (scripts/bootstrap.sh) + idempotency strategy (docs/provisioning-blueprint.md) + final gate (lab validate) | `live_fault_matrix_test.go` |  |
+| §8 | State Control | `cmd/reset.go` · `scripts/reset.sh` | `live_fault_matrix_test.go` |  |
 
 <!-- END GENERATED: Specification → Implementation Index -->
+
