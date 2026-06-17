@@ -42,6 +42,26 @@ func (c *StatusCmd) Run() output.CommandResult {
 	// Step 2: run lightweight checks (not the full suite).
 	lwResult := c.runner.LightweightRun(c.obs)
 
+	// Step 2b: feed the real root endpoint status into detection.
+	// If GET / returns 500, the lightweight checks pass but the environment
+	// is actually BROKEN. Append a synthetic failing E‑002 result so the
+	// detection algorithm sees the failure and classifies correctly.
+	rootStatus, rootErr := c.obs.CheckEndpoint("http://localhost/", false)
+	if rootErr == nil && rootStatus.StatusCode != 200 {
+		e002 := conformance.CheckByID("E-002")
+		if e002 != nil {
+			failResult := conformance.CheckResult{
+				Check:  e002,
+				Passed: false,
+			}
+			if lwResult.Results == nil {
+				lwResult.Results = []conformance.CheckResult{}
+			}
+			lwResult.Results = append(lwResult.Results, failResult)
+			lwResult.Classify()
+		}
+	}
+
 	// Step 3: apply state detection algorithm.
 	input := state.DetectInput{
 		LightweightResult: lwResult,
