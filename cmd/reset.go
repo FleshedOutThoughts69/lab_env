@@ -190,6 +190,11 @@ func (c *ResetCmd) executeTier(tier string, sf *state.File) error {
 
 	switch tier {
 	case "R1":
+		// Clear any start-limit hits before restarting.
+		if err := c.exec.Systemctl("reset-failed", cfg.AppServiceName); err != nil {
+			// Ignore errors: the service might not be in failed state.
+			_ = err
+		}
 		if err := c.exec.Systemctl("restart", cfg.AppServiceName); err != nil {
 			return fmt.Errorf("R1 app restart: %w", err)
 		}
@@ -212,6 +217,11 @@ func (c *ResetCmd) executeTier(tier string, sf *state.File) error {
 		}
 		if err := c.exec.Systemctl("daemon-reload", ""); err != nil {
 			return fmt.Errorf("R2 daemon-reload: %w", err)
+		}
+		// Clear any start-limit hits before restarting the app.
+		if err := c.exec.Systemctl("reset-failed", cfg.AppServiceName); err != nil {
+			// Ignore errors: the service might not be in failed state.
+			_ = err
 		}
 		if err := c.exec.Systemctl("restart", cfg.AppServiceName); err != nil {
 			return fmt.Errorf("R2 app restart: %w", err)
