@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	cfg "lab_env/internal/config"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
 	"lab_env/internal/output"
@@ -124,7 +125,7 @@ func buildStatusResult(
 			r.Services["nginx"] = output.SvcInfo{Active: res.Passed}
 		case "P-002":
 			if res.Passed {
-				r.Ports = append(r.Ports, output.PortInfo{Addr: "127.0.0.1:8080", Owner: "app"})
+				r.Ports = append(r.Ports, output.PortInfo{Addr: cfg.AppBindAddr, Owner: "app"})
 			}
 		}
 	}
@@ -141,8 +142,8 @@ func buildStatusResult(
 
 	// Add nginx ports (known from canonical environment — not from lightweight run).
 	r.Ports = append(r.Ports,
-		output.PortInfo{Addr: "0.0.0.0:80", Owner: "nginx"},
-		output.PortInfo{Addr: "0.0.0.0:443", Owner: "nginx (TLS)"},
+		output.PortInfo{Addr: cfg.NginxHTTPAddr, Owner: "nginx"},
+		output.PortInfo{Addr: cfg.NginxHTTPSAddr, Owner: "nginx (TLS)"},
 	)
 
 	return r

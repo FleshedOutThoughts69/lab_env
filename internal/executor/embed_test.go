@@ -94,39 +94,42 @@ func TestEmbeddedAppService_ContainsRequiredDirectives(t *testing.T) {
 // TestEmbeddedNginxConf_ContainsUpstreamBlock verifies that the embedded
 // nginx.conf contains the upstream app_backend block that F-007 targets.
 func TestEmbeddedNginxConf_ContainsUpstreamBlock(t *testing.T) {
-	t.Skip("embedded nginx.conf may not contain proxy_pass; verify during VM provisioning")
-	// entry, ok := CanonicalFileEntry(config.NginxConfigPath)
-	// if !ok {
-	// 	t.Fatal("no canonical entry for nginx.conf")
-	// }
+	entry, ok := CanonicalFileEntry(config.NginxConfigPath)
+	if !ok {
+		t.Fatal("no canonical entry for nginx.conf")
+	}
 
-	// content := string(entry.Content)
+	content := string(entry.Content)
 
-	// if !strings.Contains(content, "upstream app_backend") {
-	// 	t.Error("embedded nginx.conf missing 'upstream app_backend' block; F-007 Apply will silently do nothing")
-	// }
-	// if !strings.Contains(content, "server 127.0.0.1:8080;") {
-	// 	t.Errorf("embedded nginx.conf missing 'server 127.0.0.1:8080;'; F-007 Apply has nothing to replace")
-	// }
-	// if !strings.Contains(content, "proxy_pass http://app_backend") {
-	// 	t.Error("embedded nginx.conf missing 'proxy_pass http://app_backend'; nginx would not route to the service")
-	// }
-	// if !strings.Contains(content, "X-Proxy nginx") {
-	// 	t.Error("embedded nginx.conf missing 'X-Proxy nginx' header directive; E-004 check would always fail")
-	// }
+	if !strings.Contains(content, "upstream app_backend") {
+		t.Error("embedded nginx.conf missing 'upstream app_backend' block; F-007 Apply will silently do nothing")
+	}
+	if !strings.Contains(content, "server 127.0.0.1:8080;") {
+		t.Errorf("embedded nginx.conf missing 'server 127.0.0.1:8080;'; F-007 Apply has nothing to replace")
+	}
 
-	// // Verify the upstream block is not commented out
-	// lines := strings.Split(content, "\n")
-	// for _, line := range lines {
-	// 	trimmed := strings.TrimSpace(line)
-	// 	if strings.HasPrefix(trimmed, "#") {
-	// 		continue // skip comments
-	// 	}
-	// 	if strings.Contains(trimmed, "upstream app_backend") {
-	// 		return // found active upstream block
-	// 	}
-	// }
-	// t.Error("upstream app_backend block appears to be commented out in nginx.conf")
+	// Normalize whitespace so that multi‑space indentation doesn't break the check.
+	normalized := strings.Join(strings.Fields(content), " ")
+	if !strings.Contains(normalized, "proxy_pass http://app_backend") {
+		t.Error("embedded nginx.conf missing 'proxy_pass http://app_backend'; nginx would not route to the service")
+	}
+
+	if !strings.Contains(content, "X-Proxy nginx") {
+		t.Error("embedded nginx.conf missing 'X-Proxy nginx' header directive; E-004 check would always fail")
+	}
+
+	// Verify the upstream block is not commented out
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue // skip comments
+		}
+		if strings.Contains(trimmed, "upstream app_backend") {
+			return // found active upstream block
+		}
+	}
+	t.Error("upstream app_backend block appears to be commented out in nginx.conf")
 }
 
 // TestEmbeddedFiles_ModeAndOwnershipNonEmpty verifies that the mode and
