@@ -6,9 +6,15 @@ set -euo pipefail
 
 # Verify dependencies
 command -v jq >/dev/null 2>&1 || { echo "jq is required but not installed. Run bootstrap first."; exit 1; }
-command -v ./lab >/dev/null 2>&1 || { echo "./lab not found. Run: go build -o lab . first."; exit 1; }
 
-LAB="${LAB:-./lab}"
+# Default to the installed lab binary; override with LAB environment variable.
+LAB="${LAB:-lab}"
+command -v "${LAB}" >/dev/null 2>&1 || {
+    echo "lab binary not found (tried: ${LAB})" >&2
+    echo "Run bootstrap.sh first, or set LAB=/path/to/lab" >&2
+    exit 1
+}
+
 PASS=0
 FAIL=0
 
