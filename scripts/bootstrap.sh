@@ -351,17 +351,21 @@ appuser ALL=(root) NOPASSWD: /bin/systemctl start nginx
 appuser ALL=(root) NOPASSWD: /bin/systemctl stop nginx
 appuser ALL=(root) NOPASSWD: /bin/systemctl restart nginx
 appuser ALL=(root) NOPASSWD: /bin/systemctl daemon-reload
-appuser ALL=(root) NOPASSWD: /bin/chmod * /opt/app/server
-appuser ALL=(root) NOPASSWD: /bin/chmod * /etc/app/config.yaml
-appuser ALL=(root) NOPASSWD: /bin/chmod * /var/lib/app
-appuser ALL=(root) NOPASSWD: /bin/chmod * /var/log/app
-appuser ALL=(root) NOPASSWD: /bin/chmod * /var/log/app/app.log
-appuser ALL=(root) NOPASSWD: /bin/chown * /opt/app/server
-appuser ALL=(root) NOPASSWD: /bin/chown * /etc/app/config.yaml
+appuser ALL=(root) NOPASSWD: /bin/chmod 0000 /opt/app/server
+appuser ALL=(root) NOPASSWD: /bin/chmod 0750 /opt/app/server
+appuser ALL=(root) NOPASSWD: /bin/chmod 0000 /etc/app/config.yaml
+appuser ALL=(root) NOPASSWD: /bin/chmod 0640 /etc/app/config.yaml
+appuser ALL=(root) NOPASSWD: /bin/chmod 0000 /var/lib/app
+appuser ALL=(root) NOPASSWD: /bin/chmod 0755 /var/lib/app
+appuser ALL=(root) NOPASSWD: /bin/chmod 0000 /var/log/app
+appuser ALL=(root) NOPASSWD: /bin/chmod 0755 /var/log/app
+appuser ALL=(root) NOPASSWD: /bin/chmod 0000 /var/log/app/app.log
+appuser ALL=(root) NOPASSWD: /bin/chmod 0640 /var/log/app/app.log
+appuser ALL=(root) NOPASSWD: /bin/chown appuser:appuser /opt/app/server
+appuser ALL=(root) NOPASSWD: /bin/chown appuser:appuser /etc/app/config.yaml
 appuser ALL=(root) NOPASSWD: /usr/sbin/nginx -t
 appuser ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload
-appuser ALL=(root) NOPASSWD: /usr/sbin/nft add rule inet lab_filter LAB-FAULT *
-appuser ALL=(root) NOPASSWD: /usr/sbin/nft flush chain inet lab_filter LAB-FAULT
+appuser ALL=(root) NOPASSWD: /usr/sbin/nft
 SUDOERS
 
 # Validate before installing — a sudoers syntax error locks out appuser
