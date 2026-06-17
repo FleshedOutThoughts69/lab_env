@@ -219,9 +219,7 @@ step "08-build-service"
 TMPGOPATH=$(mktemp -d /tmp/go-build-XXXXXX)
 (
     cd "${SERVICE_SRC}"
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-        GOPATH="${TMPGOPATH}" \
-        go build -o "${APP_BINARY}" . \
+    CGO_ENABLED=0 GOPATH="${TMPGOPATH}" go build -o "${APP_BINARY}" . \
         || fail "go build failed"
 )
 rm -rf "${TMPGOPATH}"
@@ -233,7 +231,7 @@ log "OK"
 # ── Step 08b: Build the lab CLI binary ────────────────────────────────────────
 step "08b-build-lab-cli"
 cd "${LAB_DIR}"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /usr/local/bin/lab .
+CGO_ENABLED=0 go build -o /usr/local/bin/lab .
 chmod 0755 /usr/local/bin/lab
 log "  built /usr/local/bin/lab"
 log "OK"
