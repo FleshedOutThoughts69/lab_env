@@ -131,7 +131,7 @@ func TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries(t *testing.T
 	// }
 }
 
-// TestCatalog_AllChecks_HandleMissingFilesGracefully tests that checks don't panic with empty observer.
+// TestCatalog_AllChecks_HandleMissingFilesGracefully tests that checks don't panic with empty ob
 func TestCatalog_AllChecks_HandleMissingFilesGracefully(t *testing.T) {
 	checks := conformance.Catalog()
 	emptyObs := &emptyObserver{} // returns errors for file reads

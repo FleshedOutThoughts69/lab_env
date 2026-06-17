@@ -3,6 +3,9 @@ package server
 // server_edge_test.go
 //
 // Edge case HTTP handler tests.
+//
+// These tests are now fully enabled because the server package exports
+// SetStateTouchPathForTest / ResetStateTouchPath (test‑only hooks).
 
 import (
 	"encoding/json"
@@ -12,6 +15,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
 	"lab_env/service/logging"
 	"lab_env/service/telemetry"
 )
@@ -140,14 +144,14 @@ func newEdgeTestServer(t *testing.T, appEnv, stateDir string) *Server {
 	t.Helper()
 	logDir := t.TempDir()
 	logPath := filepath.Join(logDir, "app.log")
-	logger, err := New(logPath)
+	logger, err := logging.New(logPath)
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("logging.New: %v", err)
 	}
 	t.Cleanup(func() { logger.Close() })
 
 	SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
 	t.Cleanup(ResetStateTouchPath)
 
-	return New("127.0.0.1:0", appEnv, &Metrics{}, logger)
+	return New("127.0.0.1:0", appEnv, &telemetry.Metrics{}, logger)
 }

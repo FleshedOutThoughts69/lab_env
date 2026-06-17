@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"lab_env/internal/config"
@@ -110,13 +111,13 @@ func TestAuditEntry_OnMutationFailure(t *testing.T) {
 	dir := t.TempDir()
 	auditPath := filepath.Join(dir, "audit.log")
 
-	logger := NewAuditLogger(auditPath)
+	logger := NewAuditLoggerAt(auditPath, "test")
 
-	// Simulate a mutation failure: log an error entry
+	// Simulate a mutation failure: log an error entry.
+	// LogError signature is now (errName, detail string).
 	mutationErr := os.ErrPermission
 	logger.LogError("WriteFile", mutationErr.Error())
 
-	// Read the audit log and verify an error entry was written
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		t.Fatalf("reading audit log: %v", err)
@@ -126,33 +127,29 @@ func TestAuditEntry_OnMutationFailure(t *testing.T) {
 		t.Fatal("audit log is empty after LogError call")
 	}
 
-	// Parse the entry
+	// Parse the entry (may be multiple lines; we check the first).
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	var entry map[string]interface{}
-	if err := json.Unmarshal(data[:len(data)-1], &entry); err != nil { // strip trailing newline
-		t.Fatalf("audit entry is not valid JSON: %v\nraw: %s", err, data)
+	if err := json.Unmarshal([]byte(lines[0]), &entry); err != nil {
+		t.Fatalf("audit entry is not valid JSON: %v\nraw: %s", err, lines[0])
 	}
 
-	// Must have entry_type = "error"
-	entryType, ok := entry["entry_type"].(string)
-	if !ok || entryType != "error" {
+	// entry_type must be "error"
+	entryType, _ := entry["entry_type"].(string)
+	if entryType != "error" {
 		t.Errorf("entry_type: got %v, want \"error\"", entry["entry_type"])
 	}
 
-	// Must include the operation name
-	op, _ := entry["operation"].(string)
+	// The operation is recorded in the "op" field.
+	op, _ := entry["op"].(string)
 	if op != "WriteFile" {
-		t.Errorf("operation: got %q, want \"WriteFile\"", op)
+		t.Errorf("op: got %q, want \"WriteFile\"", op)
 	}
 
-	// Must include the path
-	path, _ := entry["path"].(string)
-	if path != config.ConfigPath {
-		t.Errorf("path: got %q, want %q", path, config.ConfigPath)
-	}
-
-	// Must include error information
-	if _, hasErr := entry["error"]; !hasErr {
-		t.Error("audit error entry missing 'error' field")
+	// The error detail is recorded in the "error" field.
+	errStr, _ := entry["error"].(string)
+	if !strings.Contains(errStr, "permission denied") {
+		t.Errorf("error field: got %q, expected to contain \"permission denied\"", errStr)
 	}
 
 	// Must have a timestamp

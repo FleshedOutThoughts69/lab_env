@@ -57,6 +57,25 @@ const (
 	SlowHandlerDelay = 5 * time.Second
 )
 
+// testStateTouchPath overrides the state touch file path during tests.
+// When non‑empty, touchStatePath uses this path instead of StateTouchPath.
+var testStateTouchPath string
+
+// SetStateTouchPathForTest sets the state touch path for the duration of a test.
+// Call ResetStateTouchPath to restore the default. Not safe for concurrent use.
+func SetStateTouchPathForTest(path string) { testStateTouchPath = path }
+
+// ResetStateTouchPath clears the test override.
+func ResetStateTouchPath() { testStateTouchPath = "" }
+
+// stateTouchTarget returns the path currently in use (test override or the default).
+func stateTouchTarget() string {
+	if testStateTouchPath != "" {
+		return testStateTouchPath
+	}
+	return StateTouchPath
+}
+
 // Server wraps the HTTP server and its dependencies.
 type Server struct {
 	http    *http.Server
@@ -138,7 +157,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if err := touchStatePath(); err != nil {
 		s.metrics.ErrorsTotal.Add(1)
 		s.logger.Error("state write failed",
-			"path", StateTouchPath,
+			"path", stateTouchTarget(),
 			"error", err,
 		)
 		// Set Unhealthy status. Unhealthy is distinct from Degraded:
@@ -175,12 +194,12 @@ func (s *Server) handleSlow(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `{"status":"ok"}`)
 }
 
-// touchStatePath updates the mtime of StateTouchPath, creating it if absent.
+// touchStatePath updates the mtime of the state touch target, creating it if absent.
 // This write is the state directory access that fault F-004 breaks.
 // Using os.WriteFile rather than os.Chtimes ensures both permissions and
 // inode availability are tested (inode exhaustion blocks file creation).
 func touchStatePath() error {
-	f, err := os.OpenFile(StateTouchPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	f, err := os.OpenFile(stateTouchTarget(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}

@@ -14,7 +14,7 @@ import (
 
 // TestLoad_AppEnv_LeadingTrailingSpaces verifies that app_env with leading
 // or trailing spaces is sanitized. An operator setting APP_ENV=prod  (with
-// trailing space) via shell or chaos.env produces app_env with a space that
+// trailing space) via shell or env produces app_env with a space that
 // would appear in JSON as {"env":"prod "}.
 //
 // Whether to trim or reject is a design decision. This test documents the

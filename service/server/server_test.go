@@ -255,8 +255,8 @@ func newTestServerWithMetrics(t *testing.T, appEnv, stateDir string, metrics *te
 	t.Cleanup(func() { logger.Close() })
 
 	// Point state touch path to our temp dir
-	// SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
-	// t.Cleanup(ResetStateTouchPath)
+	SetStateTouchPathForTest(filepath.Join(stateDir, "state"))
+	t.Cleanup(ResetStateTouchPath)
 
 	_ = slog.Default() // suppress unused import
 	return New("127.0.0.1:0", appEnv, metrics, logger)
