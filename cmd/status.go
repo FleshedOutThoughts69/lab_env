@@ -66,6 +66,18 @@ func (c *StatusCmd) Run() output.CommandResult {
 		}
 	}
 
+	// Step 4b: if classification was invalidated (e.g., by an interrupt)
+	// but we successfully re‑detected a valid state, restore the validity flag.
+	// This is the exit‑code‑4 recovery path defined in control‑plane‑contract §3.6.
+	if sf != nil && !sf.ClassificationValid && !state.IsUnknown(detection) {
+		sf.ClassificationValid = true
+		now := time.Now().UTC()
+		sf.LastStatusAt = &now
+		if err := c.store.Write(sf); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to update classification validity: %v\n", err)
+		}
+	}
+
 	// Step 5: build result.
 	if state.IsUnknown(detection) {
 		return output.CommandResult{
