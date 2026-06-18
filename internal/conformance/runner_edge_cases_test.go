@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 	"time"
-
+	"strings"
 	"lab_env/internal/conformance"
 )
 
