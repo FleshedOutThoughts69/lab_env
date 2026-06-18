@@ -171,7 +171,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"ok","env":"%s"}`, s.appEnv)
+	fmt.Fprintf(w, `{"status":"ok","path":"/","env":"%s"}`, s.appEnv)
 }
 
 // handleSlow handles GET /slow.
