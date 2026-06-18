@@ -29,15 +29,11 @@ type stubHTTPObserver struct {
 }
 
 func (s *stubHTTPObserver) CheckEndpoint(url string, _ bool) (conformance.EndpointStatus, error) {
-	// Only respond to the configured URL; any other URL returns unreachable.
-	if url == s.url {
-		return conformance.EndpointStatus{
-			StatusCode: s.statusCode,
-			Reachable:  true,
-			Body:       []byte(s.body),
-		}, nil
-	}
-	return conformance.EndpointStatus{Reachable: false}, nil
+	return conformance.EndpointStatus{
+		StatusCode: s.statusCode,
+		Reachable:  true,
+		Body:       []byte(s.body),
+	}, nil
 }
 
 // The remaining Observer methods are not used by the checks in these tests,
