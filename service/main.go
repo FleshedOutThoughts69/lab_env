@@ -195,6 +195,7 @@ func main() {
 	// BROKEN — which is the correct canonical state for an OOM kill.
 	if cfg.Chaos.OOMTrigger {
 		chaos.StartOOM(logger)
+		logger.Info("OOM chaos triggered — process will be killed by cgroup MemoryMax")
 	}
 
 	// ── Set Degraded status if chaos modes are active ─────────────────────────
