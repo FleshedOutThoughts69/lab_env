@@ -325,6 +325,115 @@ func TestGolden_FaultApplyResult_NoExtraFields(t *testing.T) {
 	}
 }
 
+func TestGolden_FaultListResult_NoExtraFields(t *testing.T) {
+	v := FaultListResult{
+		Total: 2,
+		Faults: []FaultSummary{
+			{ID: "F-001", Layer: "filesystem", Domain: []string{"linux"}, Symptom: "restart loop"},
+			{ID: "F-004", Layer: "permissions", Domain: []string{"linux", "os"}, Symptom: "health 200 / 500"},
+		},
+	}
+	actual := renderToJSON(t, v)
+
+	var m map[string]interface{}
+	json.Unmarshal(actual, &m)
+
+	defined := map[string]bool{
+		"total": true, "faults": true,
+	}
+	for field := range m {
+		if !defined[field] {
+			t.Errorf("FaultListResult JSON contains unexpected field %q — schema drift", field)
+		}
+	}
+}
+
+func TestGolden_FaultInfoResult_NoExtraFields(t *testing.T) {
+	v := FaultInfoResult{
+		ID:                   "F-004",
+		Layer:                "permissions",
+		Domain:               []string{"linux", "os"},
+		ResetTier:            "R2",
+		RequiresConfirmation: false,
+		IsReversible:         true,
+		MutationDisplay:      "sudo chmod 000 /var/lib/app/",
+		Symptom:              "/health returns 200; / returns 500",
+		AuthoritativeSignal:  "app.log",
+		Observable:           "curl localhost/health → 200; curl localhost/ → 500",
+		ResetAction:          "sudo chmod 755 /var/lib/app/",
+	}
+	actual := renderToJSON(t, v)
+
+	var m map[string]interface{}
+	json.Unmarshal(actual, &m)
+
+	defined := map[string]bool{
+		"id": true, "layer": true, "domain": true, "reset_tier": true,
+		"requires_confirmation": true, "is_reversible": true,
+		"mutation_display": true, "symptom": true,
+		"authoritative_signal": true, "observable": true, "reset_action": true,
+	}
+	for field := range m {
+		if !defined[field] {
+			t.Errorf("FaultInfoResult JSON contains unexpected field %q — schema drift", field)
+		}
+	}
+}
+
+func TestGolden_ResetResult_NoExtraFields(t *testing.T) {
+	v := ResetResult{
+		Tier:          "R2",
+		FromState:     state.StateDegraded,
+		ToState:       state.StateConformant,
+		FaultCleared:  "F-004",
+		ValidationRan: true,
+		DurationMs:    245,
+	}
+	actual := renderToJSON(t, v)
+
+	var m map[string]interface{}
+	json.Unmarshal(actual, &m)
+
+	defined := map[string]bool{
+		"tier": true, "from_state": true, "to_state": true,
+		"fault_cleared": true, "validation_ran": true, "duration_ms": true,
+	}
+	for field := range m {
+		if !defined[field] {
+			t.Errorf("ResetResult JSON contains unexpected field %q — schema drift", field)
+		}
+	}
+}
+
+func TestGolden_HistoryResult_NoExtraFields(t *testing.T) {
+	v := HistoryResult{
+		Total: 1,
+		Entries: []HistoryItem{
+			{
+				Ts:      goldenTime,
+				From:    state.StateConformant,
+				To:      state.StateDegraded,
+				Command: "lab fault apply F-004",
+				Fault:   "F-004",
+				Forced:  false,
+			},
+		},
+	}
+	actual := renderToJSON(t, v)
+
+	var m map[string]interface{}
+	json.Unmarshal(actual, &m)
+
+	defined := map[string]bool{
+		"total": true, "entries": true,
+	}
+	for field := range m {
+		if !defined[field] {
+			t.Errorf("HistoryResult JSON contains unexpected field %q — schema drift", field)
+		}
+	}
+}
+
 // ── Nullability contract ──────────────────────────────────────────────────────
 
 // TestGolden_ActiveFault_NullNotAbsent verifies that active_fault is
