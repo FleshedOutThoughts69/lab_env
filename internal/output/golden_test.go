@@ -274,6 +274,7 @@ func TestGolden_StatusResult_NoExtraFields(t *testing.T) {
 		"state": true, "active_fault": true, "services": true,
 		"ports": true, "endpoints": true, "last_validate": true,
 		"last_reset": true, "reconciled": true, "unknown": true,
+		"classification_valid": true,   // ← add this line
 	}
 
 	for field := range m {
