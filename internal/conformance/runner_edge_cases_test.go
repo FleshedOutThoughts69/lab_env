@@ -93,6 +93,7 @@ func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
 	if !passResult.Passed {
 		t.Error("passing check X-002: Passed=false; panic in X-001 should not affect X-002")
 	}
+}
 
 
 // TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries verifies
