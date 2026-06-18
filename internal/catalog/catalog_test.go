@@ -16,14 +16,14 @@ import (
 // ── Catalog completeness ──────────────────────────────────────────────────────
 
 func TestAllImpls_Has19Faults(t *testing.T) {
-	if len(catalog.AllImpls()) != 19 {
-		t.Errorf("AllImpls() = %d, want 19", len(catalog.AllImpls()))
+	if len(AllImpls()) != 19 {
+		t.Errorf("AllImpls() = %d, want 19", len(AllImpls()))
 	}
 }
 
 func TestAllDefs_Has19Defs(t *testing.T) {
-	if len(catalog.AllDefs()) != 19 {
-		t.Errorf("AllDefs() = %d, want 19", len(catalog.AllDefs()))
+	if len(AllDefs()) != 19 {
+		t.Errorf("AllDefs() = %d, want 19", len(AllDefs()))
 	}
 }
 
@@ -225,8 +225,6 @@ func TestDefByID_KnownFault(t *testing.T) {
 	if d.ID != "F-004" {
 		t.Errorf("ID = %q, want F-004", d.ID)
 	}
-	// FaultDef must not have function fields — verified by type
-	// (compile-time: FaultDef has no func fields)
 }
 
 func TestDefByID_UnknownFault(t *testing.T) {
@@ -268,7 +266,6 @@ func TestAllDefs_ReturnsCopies(t *testing.T) {
 	defs1 := AllDefs()
 	defs2 := AllDefs()
 
-	// Mutating a def from one call must not affect the other
 	defs1[0].ID = "MUTATED"
 	if defs2[0].ID == "MUTATED" {
 		t.Error("AllDefs should return independent copies, not shared pointers")
