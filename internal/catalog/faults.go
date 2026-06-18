@@ -16,7 +16,7 @@ func AllImpls() []*FaultImpl {
 		faultF005(), faultF006(), faultF007(), faultF008(),
 		faultF009(), faultF010(),
 		faultF013(), faultF014(), faultF015(), faultF016(),
-		faultF017(), faultF018(),
+		faultF017(), faultF018(), faultF020(),
 	}
 }
 
@@ -651,6 +651,43 @@ func faultF018() *FaultImpl {
 		},
 		Recover: func(exec executor.Executor) error {
 			return exec.RunMutation("sh", "-c", "rm -f /var/lib/app/file_*")
+		},
+	}
+}
+
+func faultF020() *FaultImpl {
+	return &FaultImpl{
+		Def: &FaultDef{
+			ID:                   "F-020",
+			Layer:                "service",
+			Domain:               []string{"linux", "networking"},
+			RequiresConfirmation: false,
+			IsReversible:         true,
+			ResetTier:            "R2",
+			Preconditions:        []state.State{state.StateConformant},
+			PreconditionChecks:   []string{},
+			Postcondition: PostconditionSpec{
+				Behavioral:    "All requests (except /health) are delayed by 400ms. /health responds immediately.",
+				FailingChecks: []string{},
+				PassingChecks: []string{"S-001", "E-001", "E-003"},
+			},
+			Symptom:             "Requests take at least 400ms. /health returns immediately. Telemetry shows chaos_active=true with chaos_modes=[\"latency\"].",
+			AuthoritativeSignal: "telemetry.json chaos_modes + curl timing",
+			Observable:          "time curl -s http://localhost/ > /dev/null — takes ≥400ms; time curl -s http://localhost/health > /dev/null — takes <50ms",
+			MutationDisplay:     "Set CHAOS_LATENCY_MS=400 in /etc/app/chaos.env and restart the service",
+			ResetAction:         "Clear /etc/app/chaos.env and restart the service",
+		},
+		Apply: func(exec executor.Executor) error {
+			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte("CHAOS_LATENCY_MS=400\n"), 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
+				return fmt.Errorf("writing chaos.env: %w", err)
+			}
+			return exec.Systemctl("restart", "app")
+		},
+		Recover: func(exec executor.Executor) error {
+			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte{}, 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
+				return fmt.Errorf("clearing chaos.env: %w", err)
+			}
+			return exec.Systemctl("restart", "app")
 		},
 	}
 }

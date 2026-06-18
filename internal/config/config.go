@@ -49,6 +49,9 @@ const (
 	// ConfigPath is the app configuration file.
 	ConfigPath = "/etc/app/config.yaml"
 
+	// ChaosEnvPath is the chaos injection environment file.
+	ChaosEnvPath = "/etc/app/chaos.env"
+
 	// LogDir is the application log directory.
 	LogDir = "/var/log/app"
 
