@@ -17,6 +17,7 @@ func AllImpls() []*FaultImpl {
 		faultF009(), faultF010(),
 		faultF013(), faultF014(), faultF015(), faultF016(),
 		faultF017(), faultF018(), faultF020(), faultF021(),
+		faultF019(),
 	}
 }
 
@@ -719,6 +720,37 @@ func faultF021() *FaultImpl {
 		},
 		Recover: func(exec executor.Executor) error {
 			return exec.RunMutation("nft", "flush", "chain", "inet", "lab_filter", "LAB-FAULT")
+		},
+	}
+}
+
+func faultF019() *FaultImpl {
+	return &FaultImpl{
+		Def: &FaultDef{
+			ID:                   "F-019",
+			Layer:                "filesystem",
+			Domain:               []string{"linux", "os"},
+			RequiresConfirmation: false,
+			IsReversible:         true,
+			ResetTier:            "R2",
+			Preconditions:        []state.State{state.StateConformant},
+			PreconditionChecks:   []string{},
+			Postcondition: PostconditionSpec{
+				Behavioral:    "The loopback mount is full. GET / returns 500 because state file writes fail. GET /health returns 200.",
+				FailingChecks: []string{"E-002", "F-004"},
+				PassingChecks: []string{"S-001", "E-001", "E-003"},
+			},
+			Symptom:             "df -h /var/lib/app shows 100% usage. curl http://localhost/ → 500. curl http://localhost/health → 200.",
+			AuthoritativeSignal: "df -h /var/lib/app",
+			Observable:          "df -h /var/lib/app — 100%% usage; curl -s localhost/ → {\"status\":\"error\",\"msg\":\"state write failed\"}; curl -s localhost/health → {\"status\":\"ok\"}",
+			MutationDisplay:     "dd if=/dev/zero of=/var/lib/app/fill bs=1M count=100",
+			ResetAction:         "rm /var/lib/app/fill",
+		},
+		Apply: func(exec executor.Executor) error {
+			return exec.RunMutation("dd", "if=/dev/zero", "of=/var/lib/app/fill", "bs=1M", "count=100")
+		},
+		Recover: func(exec executor.Executor) error {
+			return exec.RunMutation("rm", "-f", "/var/lib/app/fill")
 		},
 	}
 }
