@@ -203,8 +203,12 @@ func touchStatePath() error {
 	if err != nil {
 		return err
 	}
-	f.Close()
-	return nil
+	defer f.Close()
+	// Write a small payload to force a block allocation attempt on every call.
+	// If the filesystem is full, this write will fail even though the file
+	// creation may have succeeded on a zero-byte write.
+	_, err = f.Write([]byte("ok"))
+	return err
 }
 
 // writeJSON is a helper for writing JSON responses.
