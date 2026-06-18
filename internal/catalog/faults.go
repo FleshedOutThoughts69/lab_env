@@ -16,7 +16,7 @@ func AllImpls() []*FaultImpl {
 		faultF005(), faultF006(), faultF007(), faultF008(),
 		faultF009(), faultF010(),
 		faultF013(), faultF014(), faultF015(), faultF016(),
-		faultF017(), faultF018(), faultF020(),
+		faultF017(), faultF018(), faultF020(), faultF021()
 	}
 }
 
@@ -688,6 +688,37 @@ func faultF020() *FaultImpl {
 				return fmt.Errorf("clearing chaos.env: %w", err)
 			}
 			return exec.Systemctl("restart", "app.service")
+		},
+	}
+}
+
+func faultF021() *FaultImpl {
+	return &FaultImpl{
+		Def: &FaultDef{
+			ID:                   "F-021",
+			Layer:                "network",
+			Domain:               []string{"linux", "networking"},
+			RequiresConfirmation: false,
+			IsReversible:         true,
+			ResetTier:            "R2",
+			Preconditions:        []state.State{state.StateConformant},
+			PreconditionChecks:   []string{},
+			Postcondition: PostconditionSpec{
+				Behavioral:    "nginx cannot reach the app. All proxied endpoints return 502. Direct access to the app on 127.0.0.1:8080 still works.",
+				FailingChecks: []string{"E-001", "E-002", "E-003", "E-004", "E-005"},
+				PassingChecks: []string{"S-001", "P-001", "P-002"},
+			},
+			Symptom:             "curl http://localhost/ returns 502. curl http://127.0.0.1:8080/health returns 200. nft list chain shows a drop rule.",
+			AuthoritativeSignal: "nft list chain inet lab_filter LAB-FAULT + curl",
+			Observable:          "nft list chain inet lab_filter LAB-FAULT — shows drop rule; curl -I localhost → 502; curl 127.0.0.1:8080/health → 200",
+			MutationDisplay:     "nft add rule inet lab_filter LAB-FAULT tcp dport 8080 drop",
+			ResetAction:         "nft flush chain inet lab_filter LAB-FAULT",
+		},
+		Apply: func(exec executor.Executor) error {
+			return exec.RunMutation("nft", "add", "rule", "inet", "lab_filter", "LAB-FAULT", "tcp", "dport", "8080", "drop")
+		},
+		Recover: func(exec executor.Executor) error {
+			return exec.RunMutation("nft", "flush", "chain", "inet", "lab_filter", "LAB-FAULT")
 		},
 	}
 }
