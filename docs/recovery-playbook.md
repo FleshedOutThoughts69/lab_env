@@ -24,6 +24,7 @@ cat /var/lib/lab/state.json    # invalid JSON
 State: UNKNOWN
 Exit code: 5
 ```
+Or: recovers by re‑detecting from runtime and writing a fresh state file.
 
 **Expected audit evidence:** no new audit entries (status is read-only).
 
@@ -95,7 +96,17 @@ cat /var/lib/lab/lab.lock      # 99999999
 
 ## Drill 4: Live lock contention
 
-**Induce:**
+**Induce — reliable method:**
+```bash
+# Create a slow R3 reset by removing a config file the bootstrap checks.
+# This forces the bootstrap script to run, holding the lock for several seconds.
+sudo rm /etc/app/config.yaml
+sudo lab reset --tier R3 &
+sleep 1
+sudo lab fault apply F-004 --force   # --force needed because the first command may leave state CONFORMANT
+```
+
+**Original induction (may be too fast on a conformant system):**
 ```bash
 lab reset --tier R3 &          # slow operation
 sleep 0.5
@@ -105,13 +116,13 @@ lab fault apply F-004          # second operation
 **Immediate artifact (second command):**
 ```bash
 # exits immediately with:
-# Error: another lab operation is in progress (PID <N>)
+# another lab operation is in progress (PID <N>)
 # Exit code: 1
 ```
 
 **Expected audit evidence:** `entry_type: error, op: ErrLockHeld` in audit.log from second command.
 
-**Recovery:** wait for first command to complete.
+**Recovery:** wait for first command to complete; then restore config if needed and reset.
 
 **Pass criterion:** second command exits immediately (not waiting); exit code 1; first command completes without interference.
 
@@ -121,7 +132,20 @@ lab fault apply F-004          # second operation
 
 ## Drill 5: Interrupted fault apply (signal after mutation, before state write)
 
-**Induce:**
+**Reliable method (interrupting a slow mutation):**
+The interrupt handler works for any mutating command. Use a long‑running R3 reset to allow time for signal delivery.
+```bash
+sudo rm /etc/app/config.yaml   # force bootstrap to do real work
+sudo lab reset --tier R3 &
+RESET_PID=$!
+sleep 1
+sudo kill -SIGINT $RESET_PID
+wait $RESET_PID
+echo "Exit: $?"
+```
+Expected: exit 4.
+
+**Original induction (may complete too quickly):**
 ```bash
 lab fault apply F-001 &
 APPLY_PID=$!
@@ -137,9 +161,7 @@ cat /var/lib/lab/state.json | jq '{state, classification_valid, active_fault}'
 grep '"entry_type":"interrupt"' /var/lib/lab/audit.log
 ```
 
-**Expected:** exit 4 (if signal arrived after Apply); `classification_valid: false`; interrupt entry in audit.
-
-**Expected `lab status`:** re-detects from runtime. If runtime is healthy (fault may not have completed): CONFORMANT. If mutation completed: depends on which files changed.
+**Expected:** exit 4; `classification_valid: false`; interrupt entry in audit.
 
 **Recovery:**
 ```bash
@@ -150,7 +172,7 @@ lab validate                   # confirm
 
 **Pass criterion:** `lab status` exits 0; `classification_valid` is restored to `true`; `lab validate` exits 0 after recovery.
 
-**Failure:** `state.json` shows DEGRADED with no active fault recorded (invariant I-2 broken), or `lab status` returns UNKNOWN on a healthy system.
+**Failure:** `state.json` shows DEGRADED with no active fault recorded (invariant I‑2 broken), or `lab status` returns UNKNOWN on a healthy system.
 
 ---
 
@@ -173,18 +195,18 @@ cat /var/lib/lab/state.json | jq '.classification_valid'   # false
 grep '"entry_type":"interrupt"' /var/lib/lab/audit.log     # present
 ```
 
-**Expected:** exit 4; `classification_valid: false`; system partially reset (some files may be restored, some not).
+**Expected:** exit 4; `classification_valid: false`; system partially reset.
 
 **Recovery:**
 ```bash
 lab status
-lab reset --tier R2            # idempotent — safe to re-run
+lab reset --tier R2            # idempotent — safe to re‑run
 lab validate
 ```
 
 **Pass criterion:** `lab reset --tier R2` succeeds on second attempt; `lab validate` exits 0.
 
-**Failure:** `lab reset` on second attempt fails due to state left by interrupted first run (reset is not idempotent).
+**Failure:** `lab reset` on second attempt fails due to state left by interrupted first run.
 
 ---
 
@@ -192,7 +214,7 @@ lab validate
 
 **Induce:**
 ```bash
-sudo chmod 000 /var/lib/app    # apply F-004's mutation manually
+sudo chmod 000 /var/lib/app    # apply F‑004's mutation manually
 # state.json still shows CONFORMANT — no fault recorded
 ```
 
@@ -260,12 +282,12 @@ lab status
 
 **Induce:**
 ```bash
-lab fault apply F-008 --yes
-lab status                     # DEGRADED
+lab --yes fault apply F-008     # Apply returns error (expected — requires binary rebuild)
+lab status                       # state reflects CONFORMANT (no mutation occurred)
 ```
 
 **Expected `lab reset --tier R3`:**
-1. Recover() called on F-008 → returns error (expected — logged, not fatal)
+1. Recover() called on F‑008 → returns error (expected — logged, not fatal)
 2. R3 operations execute (bootstrap script)
 3. Post-reset validation runs
 4. Exit 0
@@ -274,12 +296,12 @@ lab status                     # DEGRADED
 ```bash
 lab reset --tier R3
 lab validate
-ls -la /opt/app/server         # new binary (modified time updated)
+ls -la /opt/app/server           # binary unchanged (F-008 is a build‑time fault)
 ```
 
-**Pass criterion:** `lab reset --tier R3` exits 0; `lab validate` exits 0; binary modification time is newer than fault application time.
+**Pass criterion:** `lab reset --tier R3` exits 0; `lab validate` exits 0.
 
-**Failure:** R3 exits non-zero due to Recover() failure on F-008 (Recover error must not block R3).
+**Failure:** R3 exits non-zero due to Recover() failure on F‑008 (Recover error must not block R3).
 
 ---
 
@@ -298,3 +320,4 @@ test ! -f /var/lib/lab/lab.lock && echo "no stale lock"
 ```
 
 All seven checks must pass.
+```

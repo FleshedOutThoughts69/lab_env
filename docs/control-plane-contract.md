@@ -779,6 +779,37 @@ This section documents which behaviors in this contract are derived from each se
 
 ---
 
+# §10 — Current Implementation Status
+
+> **Purpose:** this section documents the delta between the aspirational contract above and the implementation that was built, tested, and verified on live Ubuntu 22.04 (aarch64) hardware as of June 2026. It is a living section — update it whenever the implementation gains new capabilities.
+
+## 10.1 — `lab status` Locking
+
+- **Contract says** (§3.5, §4.1, §6.3): `lab status` does not acquire the mutation lock and may update `state.json` without it.
+- **Implementation:** `lab status` now **acquires the lock** for every state‑file write (reconciliation, classification‑validity restoration, fresh‑file creation). This prevents read‑modify‑write races with concurrent mutation commands. The read‑only observation phase remains lock‑free; only the write phase is serialised.
+
+## 10.2 — Interrupt Handling Grace Period
+
+- **Contract says** (§3.6): the current executor operation is allowed to complete normally, with a 30‑second or 120‑second grace period before abandonment.
+- **Implementation:** the signal handler **immediately** invalidates classification, writes the audit entry, and exits with code 4. No grace period is implemented; the current operation is abandoned. The remaining contract points (classification_valid=false, not BROKEN, recovery via `lab status`) are all satisfied.
+
+## 10.3 — Post‑Apply Verification
+
+- **Contract says** (§4.5, execution contract step 5): the implementation MAY run the fault’s `FailingChecks` to verify the fault is active.
+- **Implementation:** this optional verification step is **not performed**. The fault is applied, state is recorded, and the command exits. The operator must manually run `lab validate` to confirm the fault’s effects.
+
+## 10.4 — `--yes` Flag Forwarding
+
+- **Contract says** (§3.4): global `--yes` suppresses confirmation prompts for all commands.
+- **Implementation:** the global `--yes` flag was previously not forwarded to the `fault apply` subcommand. A fix was applied so that `lab --yes fault apply F-008` now correctly bypasses the confirmation prompt. The contract is now fully satisfied.
+
+## 10.5 — `lab reset` Calls `reset‑failed`
+
+- **Contract says** (§4.6): R1/R2 reset restarts services.
+- **Implementation:** an additional `systemctl reset-failed app.service` call was added before every app restart in R1 and R2. This prevents start‑limit cascade failures when faults cause repeated service crashes.
+
+---
+
 *End of Contract.*
 *Contract version: 1.0.0*
 *This document introduces no system semantics. All semantic authority resides in the three model documents.*

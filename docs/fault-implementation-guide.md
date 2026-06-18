@@ -22,6 +22,8 @@ Each fault entry has five sections:
 
 **Monitoring signals** — what to watch in real time while the fault is active or during apply/recover.
 
+**Note:** All example commands assume passwordless sudo is configured (as done by `bootstrap.sh`). Prefix with `sudo` if not running as root.
+
 ---
 
 ## Service Restart Timing Reference
@@ -31,7 +33,7 @@ Many faults trigger a `systemctl restart app.service`. The following timing appl
 | Phase | Duration | Notes |
 |---|---|---|
 | Stop (normal) | ≤ 10s | `TimeoutStopSec=10`; service has 5s shutdown grace period |
-| Stop (F-008 active) | ~90s | SIGTERM ignored; systemd waits full `TimeoutStopSec` then sends SIGKILL |
+| Stop (F-008 active) | ~10–12s | SIGTERM ignored; systemd waits full `TimeoutStopSec` then sends SIGKILL |
 | Start | ≤ 1s | Service opens log, binds port, writes `/run/app/healthy` |
 | Restart loop (crash faults) | 2s between attempts | `RestartSec=2`; max 5 attempts in 30s before `start-limit-hit` |
 
@@ -366,29 +368,19 @@ curl localhost/health                            # 502 — proxy broken
 ### Mutation vector
 
 ```
-Executor:
-  1. exec.RunMutation("go", "build",
-       "-ldflags", "-X main.FaultIgnoreSIGTERM=true",
-       "-o", "/opt/app/server",
-       "./service")
-     [working directory: /opt/lab-env/service]
-  2. exec.Chown("/opt/app/server", "appuser", "appuser")
-  3. exec.Chmod("/opt/app/server", 0750)
-  4. exec.Systemctl("restart", "app.service")
+Executor: returns error immediately (no mutation performed)
+
+  ErrApplyFailed: fault application failed:
+  F-008 Apply: binary rebuild required —
+  implement in deployment pipeline
 
 Shell equivalent:
-  cd /opt/lab-env/service
-  sudo CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags "-X main.FaultIgnoreSIGTERM=true" \
-    -o /opt/app/server .
-  sudo chown appuser:appuser /opt/app/server
-  sudo chmod 0750 /opt/app/server
-  sudo systemctl restart app.service
+  No shell command — Apply is rejected.
+  The fault requires a manual binary rebuild with the
+  FAULT_IGNORE_SIGTERM build flag.
 ```
 
-**Go toolchain required.** Apply invokes `go build` and will fail if the Go toolchain is not installed or the source is not present at `/opt/lab-env/service`. Build time is typically 15–30 seconds on the lab VM.
-
-**`--yes` flag required.** This fault requires operator confirmation: `lab fault apply F-008 --yes`.
+**`--yes` flag required.** The global `--yes` flag must be placed before the subcommand: `lab --yes fault apply F-008`.
 
 ### Reversion vector
 
@@ -408,20 +400,16 @@ To recover:
 
 ### Apply side effects
 
-**Build phase (15–30 seconds):** the service continues running with the old binary during the build. The system remains in CONFORMANT state. No conformance checks fail.
+Apply returns an error and does not change the system. The state file remains CONFORMANT. To fully test this fault, rebuild the service binary manually with the `FAULT_IGNORE_SIGTERM` build flag, deploy it, and observe the shutdown behavior.
 
-**Restart phase (~1 second):** service stops and restarts with the new binary.
-
-**Post-apply:** `lab validate` exits 0. All 23 checks pass. The fault is entirely silent during normal operation — it only manifests at shutdown.
-
-**Observable proof of fault:**
+**Observable proof of fault (after manual rebuild):**
 
 ```bash
-time sudo systemctl stop app    # ~90 seconds (SIGKILL at TimeoutStopSec)
+time sudo systemctl stop app    # > 10s (SIGKILL at TimeoutStopSec)
 sudo systemctl start app        # restart after observation
 ```
 
-The `TimeoutStopSec=10` in `app.service` means systemd sends SIGTERM, waits 10 seconds, then sends SIGKILL. With F-008 active, SIGTERM is masked — the process ignores it and systemd escalates to SIGKILL after the timeout. The ~90 second figure from the runbook assumes an earlier version; the current `TimeoutStopSec=10` means the timeout is ~10 seconds, not 90. The runbook figure should be read as "significantly longer than normal stop time."
+The `TimeoutStopSec=10` in `app.service` means systemd sends SIGTERM, waits 10 seconds, then sends SIGKILL. With F-008 active, SIGTERM is masked — the process ignores it and systemd escalates to SIGKILL after the timeout.
 
 ### Recover side effects
 
@@ -523,7 +511,6 @@ ls /var/log/app/                      # empty — file unlinked
 lsof +L1 | grep app.log              # deleted fd still held by process
 lsof -p $(pgrep server) | grep log   # inode with link count 0
 lab validate                          # exit 0 (degraded-conformant)
-df -h /var/log/app                   # space still consumed by deleted inode
 ```
 
 ---
@@ -593,27 +580,19 @@ systemctl status app                  # ExecStart=/opt/app/DOESNOTEXIST
 ### Mutation vector
 
 ```
-Executor:
-  1. exec.RunMutation("go", "build",
-       "-ldflags", "-X main.FaultZombieChildren=true",
-       "-o", "/opt/app/server",
-       "./service")
-     [working directory: /opt/lab-env/service]
-  2. exec.Chown("/opt/app/server", "appuser", "appuser")
-  3. exec.Chmod("/opt/app/server", 0750)
-  4. exec.Systemctl("restart", "app.service")
+Executor: returns error immediately (no mutation performed)
+
+  ErrApplyFailed: fault application failed:
+  F-014 Apply: binary rebuild required —
+  implement in deployment pipeline
 
 Shell equivalent:
-  cd /opt/lab-env/service
-  sudo CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags "-X main.FaultZombieChildren=true" \
-    -o /opt/app/server .
-  sudo chown appuser:appuser /opt/app/server
-  sudo chmod 0750 /opt/app/server
-  sudo systemctl restart app.service
+  No shell command — Apply is rejected.
+  The fault requires a manual binary rebuild with the
+  FAULT_ZOMBIE_CHILDREN build flag.
 ```
 
-Same toolchain requirements as F-008. **`--yes` flag required.**
+**`--yes` flag required.** Same as F-008: `lab --yes fault apply F-014`.
 
 ### Reversion vector
 
@@ -625,11 +604,11 @@ lab reset --tier R3
 
 ### Apply side effects
 
-Same build/restart window as F-008 (15–30 second build, ~1 second restart). Post-apply, `lab validate` exits 0. The fault is silent immediately after apply.
+Apply returns an error and does not change the system. To fully test this fault, rebuild the service binary manually with the `FAULT_ZOMBIE_CHILDREN` build flag, deploy it, and observe zombie accumulation.
+
+**After manual rebuild:**
 
 Zombies accumulate gradually: each `GET /` request spawns a child process that the parent intentionally does not `wait()` on. The child exits but remains in the process table as a zombie until the parent is killed. Zombies consume PID table slots but no CPU or memory.
-
-**Accumulation rate:** approximately one zombie per `GET /` request. The 50-entry PID table constraint is not exhausted in normal operation — the table is not 50 entries wide; it is limited by the system PID limit (typically 32768). The fault's teaching value is observable at any zombie count.
 
 ### Recover side effects
 

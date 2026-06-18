@@ -7,7 +7,7 @@ This document is purely operational. Architecture lives in `docs/`. This documen
 
 ## Prerequisites
 
-**OS:** Ubuntu 22.04 LTS (amd64). cgroup v2 required for MemoryMax enforcement.
+**OS:** Ubuntu 22.04 LTS (amd64 or aarch64). cgroup v2 required for MemoryMax enforcement.
 
 **Verify cgroup v2:**
 ```bash
@@ -15,10 +15,10 @@ stat -f -c %T /sys/fs/cgroup
 # must print: cgroup2fs
 ```
 
-**Go toolchain:** 1.21 or later (required for `math/rand/v2` auto-seed, `log/slog`).
+**Go toolchain:** 1.22 or later (required for the service module).
 ```bash
 go version
-# go version go1.21.x linux/amd64
+# go version go1.22.x linux/arm64 (or amd64)
 ```
 
 **Repository must be at `/opt/lab-env`:**
@@ -42,6 +42,8 @@ sudo bash /opt/lab-env/scripts/bootstrap.sh
 [bootstrap] [01-root-check] OK
 [bootstrap] [02-packages] Starting
 [bootstrap] [02-packages] OK
+[bootstrap] [02b-go-version] Starting
+[bootstrap] [02b-go-version] Go 1.26.0 OK
 [bootstrap] [03-user] Starting
 [bootstrap] [03-user]   created group appuser gid=1001
 [bootstrap] [03-user]   created user appuser uid=1001
@@ -58,9 +60,12 @@ sudo bash /opt/lab-env/scripts/bootstrap.sh
 [bootstrap] [07-config-files]   installed /etc/app/config.yaml
 [bootstrap] [07-config-files]   created empty /etc/app/chaos.env (mode 0644)
 [bootstrap] [07-config-files] OK
-[bootstrap] [08-build] Starting
-[bootstrap] [08-build]   built /opt/app/server (0750 appuser:appuser)
-[bootstrap] [08-build] OK
+[bootstrap] [08-build-service] Starting
+[bootstrap] [08-build-service]   built /opt/app/server (0750 appuser:appuser)
+[bootstrap] [08-build-service] OK
+[bootstrap] [08b-build-lab-cli] Starting
+[bootstrap] [08b-build-lab-cli]   built /usr/local/bin/lab
+[bootstrap] [08b-build-lab-cli] OK
 [bootstrap] [09-systemd-unit] Starting
 [bootstrap] [09-systemd-unit]   installed /etc/systemd/system/app.service
 [bootstrap] [09-systemd-unit] OK
@@ -94,39 +99,20 @@ sudo bash /opt/lab-env/scripts/bootstrap.sh
 journalctl -u app.service -n 30 --no-pager
 ```
 
+**After bootstrap completes:** run `sudo lab provision` to initialise the state file:
+```bash
+sudo lab provision
+```
+
 ---
 
-## 2. Build the control plane CLI
+## 2. The `lab` binary is already installed
 
-The control plane depends on `github.com/spf13/cobra`. Fetch dependencies before building. On a VM with internet access:
+Bootstrap step 08b builds the control plane CLI and installs it at `/usr/local/bin/lab`. After bootstrap, `sudo lab` works from any directory. No separate build step is needed.
 
 ```bash
-cd /opt/lab-env
-go mod download
-go build -o lab .
-```
-
-**Offline / air-gapped VMs:** pre-populate the Go module cache on a connected machine and copy it, or use a vendor directory:
-```bash
-# On a connected machine:
-cd /opt/lab-env && go mod vendor
-# Copy the vendor/ directory to the VM alongside the source.
-
-# Then on the VM (uses local vendor, no network):
-go build -mod=vendor -o lab .
-```
-
-**Verify:**
-```bash
-./lab --help
+sudo lab --help
 # Usage: lab <command> ...
-```
-
-**Optional — add `lab` to PATH for use outside `/opt/lab-env`:**
-```bash
-sudo cp /opt/lab-env/lab /usr/local/bin/lab
-# Now `lab` works from any directory.
-# All subsequent quickstart commands use ./lab; substitute lab if using PATH.
 ```
 
 ---
@@ -134,37 +120,38 @@ sudo cp /opt/lab-env/lab /usr/local/bin/lab
 ## 3. Verify the environment is CONFORMANT
 
 ```bash
-./lab validate
+sudo lab validate
 ```
 
 **Expected output:**
 ```
-PASS [S-001] app.service is active
-PASS [S-002] app.service is enabled
-PASS [S-003] nginx is active
-PASS [S-004] nginx is enabled
-PASS [P-001] App process runs as appuser
-PASS [P-002] App listens on 127.0.0.1:8080
-PASS [P-003] nginx listens on 0.0.0.0:80
-PASS [P-004] nginx listens on 0.0.0.0:443
-PASS [E-001] GET /health returns HTTP 200
-PASS [E-002] GET / returns HTTP 200
-PASS [E-003] /health body contains "status":"ok"
-PASS [E-004] Response includes X-Proxy: nginx header
-PASS [E-005] GET https://app.local/health returns 200 (skip verify)
-PASS [F-001] /opt/app/server exists, owned appuser:appuser, mode 750
-PASS [F-002] /etc/app/config.yaml exists, owned appuser:appuser, mode 640
-PASS [F-003] /var/log/app/ exists, owned appuser:appuser, mode 755
-PASS [F-004] /var/lib/app/ exists, owned appuser:appuser, mode 755
-PASS [F-005] nginx configuration passes syntax check
-PASS [F-006] TLS certificate exists and has not expired
-PASS [F-007] app.local resolves to 127.0.0.1
-PASS [L-001] /var/log/app/app.log exists and is non-empty
-PASS [L-002] Last line of app.log is valid JSON
-PASS [L-003] app.log contains startup entry {"msg":"server started"}
+Running conformance suite (23 checks)...
 
-=== CONFORMANT: 23/23 checks passed ===
-CONFORMANT
+  [PASS] S-001  app.service is active
+  [PASS] S-002  app.service is enabled
+  [PASS] S-003  nginx is active
+  [PASS] S-004  nginx is enabled
+  [PASS] P-001  App process runs as appuser
+  [PASS] P-002  App listens on 127.0.0.1:8080
+  [PASS] P-003  nginx listens on 0.0.0.0:80
+  [PASS] P-004  nginx listens on 0.0.0.0:443
+  [PASS] E-001  GET /health returns HTTP 200
+  [PASS] E-002  GET / returns HTTP 200
+  [PASS] E-003  /health body contains "status":"ok"
+  [PASS] E-004  Response includes X-Proxy: nginx header
+  [PASS] E-005  GET https://app.local/health returns 200 (skip verify)
+  [PASS] F-001  /opt/app/server exists, owned appuser:appuser, mode 750
+  [PASS] F-002  /etc/app/config.yaml exists, owned appuser:appuser, mode 640
+  [PASS] F-003  /var/log/app/ exists, owned appuser:appuser, mode 755
+  [PASS] F-004  /var/lib/app/ exists, owned appuser:appuser, mode 755
+  [PASS] F-005  nginx configuration passes syntax check
+  [PASS] F-006  TLS certificate exists and has not expired
+  [PASS] F-007  app.local resolves to 127.0.0.1
+  [PASS] L-001  /var/log/app/app.log exists and is non-empty
+  [PASS] L-002  Last line of app.log is valid JSON
+  [PASS] L-003  app.log contains a startup entry
+
+CONFORMANT  23/23 checks passed
 ```
 
 **Exit code must be 0:**
@@ -189,8 +176,8 @@ curl -sk https://app.local/health
 # {"status":"ok"}
 ```
 
-### F-011 baseline behavior — proxy timeout demo
-F-011 is not an applyable fault; it is an observable property of the canonical environment. The nginx `proxy_read_timeout` (3s) is shorter than the `/slow` endpoint response time (5s). Accessing `/slow` via nginx produces a 504; direct access to the service succeeds:
+### B-001 baseline behavior — proxy timeout demo
+B-001 is not an applyable fault; it is an observable property of the canonical environment. The nginx `proxy_read_timeout` (3s) is shorter than the `/slow` endpoint response time (5s). Accessing `/slow` via nginx produces a 504; direct access to the service succeeds:
 
 ```bash
 # Via nginx (times out — nginx cuts connection at 3s)
@@ -220,8 +207,8 @@ ls -la /run/app/
 ```bash
 cat /run/app/telemetry.json | jq .
 # {
-#   "ts": "2026-01-01T12:00:00Z",
-#   "pid": 12345,
+#   "ts": "2026-06-17T12:00:00Z",
+#   "pid": 86399,
 #   "uptime_seconds": 42,
 #   "cpu_percent": 0.1,
 #   "memory_rss_mb": 12.3,
@@ -258,28 +245,19 @@ sudo nft list chain inet lab_filter LAB-FAULT
 
 ### Control plane state
 ```bash
-./lab status --json | jq .
+sudo lab status --json | jq .
 # {
 #   "state": "CONFORMANT",
 #   "active_fault": null,
 #   "classification_valid": true,
-#   "last_validate": "2026-01-01T12:00:00Z",
-#   "services": {
-#     "app": { "active": true, "enabled": true },
-#     "nginx": { "active": true, "enabled": true }
-#   },
-#   "endpoints": {
-#     "health": { "reachable": true, "status_code": 200 },
-#     "root": { "reachable": true, "status_code": 200 }
-#   },
-#   "history": []
+#   ...
 # }
 ```
 
 The key fields to check after any operation:
 - `state` — current canonical state (CONFORMANT / DEGRADED / BROKEN / UNKNOWN)
 - `active_fault` — null when no fault active; fault ID string when DEGRADED
-- `classification_valid` — false after an interrupt; run `./lab status` again to re-derive
+- `classification_valid` — false after an interrupt; run `sudo lab status` again to re-derive
 
 ---
 
@@ -322,14 +300,13 @@ sudo bash /opt/lab-env/scripts/validate.sh
 **B1: Interrupt path (requires running service)**
 ```bash
 # Apply a fault that takes longer to reset (F-001 involves service restart)
-./lab fault apply F-001
+sudo lab fault apply F-001
 
 # Begin reset in background
-./lab reset &
+sudo lab reset &
 RESET_PID=$!
 
 # Wait until the reset process is confirmed running before interrupting
-# (avoids the race where sleep 0.2 is shorter than the reset itself)
 for i in $(seq 1 20); do
     kill -0 $RESET_PID 2>/dev/null && break
     sleep 0.1
@@ -337,7 +314,7 @@ done
 
 # Send interrupt — process must still be alive
 if kill -0 $RESET_PID 2>/dev/null; then
-    kill -SIGINT $RESET_PID
+    sudo kill -SIGINT $RESET_PID
 else
     echo "Reset completed before interrupt could be sent — retry with a slower fault"
 fi
@@ -355,49 +332,47 @@ cat /var/lib/lab/state.json | jq '{state, classification_valid}'
 grep '"entry_type":"interrupt"' /var/lib/lab/audit.log
 
 # Reclassify from runtime evidence
-./lab status
-./lab reset    # restore to CONFORMANT if needed
+sudo lab status
+sudo lab reset    # restore to CONFORMANT if needed
 ```
 
 **B2: Live fault matrix (see Section 7)**
 
 **B3: Status/validate cycle**
 ```bash
-./lab status --json | jq .state   # CONFORMANT
-./lab validate > /dev/null
-./lab status --json | jq .state   # still CONFORMANT (validate did not mutate)
+sudo lab status --json | jq .state   # CONFORMANT
+sudo lab validate > /dev/null
+sudo lab status --json | jq .state   # still CONFORMANT (validate did not mutate)
 
 # Manual break, then verify validate doesn't reconcile
 sudo chmod 000 /var/lib/app
-./lab validate > /dev/null        # exits 1, but...
+sudo lab validate > /dev/null        # exits 1, but...
 cat /var/lib/lab/state.json | jq .state  # still CONFORMANT (validate cannot update)
-./lab status --json | jq .state   # BROKEN (status reconciles)
+sudo lab status --json | jq .state   # BROKEN (status reconciles)
 sudo chmod 755 /var/lib/app
-./lab reset
+sudo lab reset
 ```
 
 ### Phase C — Invariant stress
 
 ```bash
 # State file concurrency: status + fault apply concurrent
-./lab fault apply F-004 &
-for i in $(seq 1 50); do ./lab status > /dev/null 2>&1; done
+sudo lab fault apply F-004 &
+for i in $(seq 1 50); do sudo lab status > /dev/null 2>&1; done
 wait
-./lab status --json | jq '{state, active_fault, classification_valid}'
+sudo lab status --json | jq '{state, active_fault, classification_valid}'
 # state and active_fault must be consistent (invariant I-2)
 
 # Rapid reset cycles
 for i in $(seq 1 10); do
-    ./lab fault apply F-004
-    ./lab reset
-    ./lab validate || { echo "FAIL at iteration $i"; break; }
+    sudo lab fault apply F-004
+    sudo lab reset
+    sudo lab validate || { echo "FAIL at iteration $i"; break; }
     echo "Iteration $i: OK"
 done
 ```
 
-### Phase D — Golden fixture freeze (after H-001 fix)
-
-**Known issue H-001:** `cmd/status.go` `buildStatusResult` currently has a `code := 502 // best guess` fallback for endpoint status codes. Golden fixtures must not be expanded until this is fixed, because the incorrect value would be baked in as "correct." The regression guard is `TestRenderStatus_JSON_EndpointCodesNotGuessed` — it will fail if the fallback is present. Fix first, then expand fixtures.
+### Phase D — Golden fixture freeze
 
 ```bash
 # Verify H-001 is fixed (test must pass)
@@ -418,12 +393,12 @@ git diff testdata/golden/
 
 ### Changing the service binary
 
-The service module has one external dependency (`gopkg.in/yaml.v3`). Fetch it before building if not already cached:
+The service module has one external dependency (`gopkg.in/yaml.v3`). Build and deploy:
 
 ```bash
 cd /opt/lab-env/service
-go mod download          # fetch yaml.v3 if not cached (needs internet or vendor/)
-go build -o /opt/app/server .
+CGO_ENABLED=0 go build -buildvcs=false -o /tmp/app-server .
+sudo mv /tmp/app-server /opt/app/server
 sudo chown appuser:appuser /opt/app/server
 sudo chmod 750 /opt/app/server
 sudo systemctl restart app.service
@@ -436,190 +411,87 @@ curl http://localhost/health
 
 ```bash
 cd /opt/lab-env
-go build -o lab .
-./lab validate
-./lab status
+sudo CGO_ENABLED=0 go build -buildvcs=false -o /usr/local/bin/lab .
+sudo lab validate
+sudo lab status
 ```
 
 ### Changing a fault definition
 
 ```bash
 cd /opt/lab-env
-go build -o lab .
-./lab fault apply F-004
-./lab validate        # E-002 should fail
-./lab reset
-./lab validate        # all 23 should pass
+sudo go build -o /usr/local/bin/lab .
+sudo lab fault apply F-004
+sudo lab validate        # E-002 should fail
+sudo lab reset
+sudo lab validate        # all 23 should pass
 ```
 
 ### Changing a conformance check
 
 ```bash
 cd /opt/lab-env
-go build -o lab .
-./lab validate --check S-001
-./lab validate --check E-002
+sudo go build -o /usr/local/bin/lab .
+sudo lab validate --check S-001
+sudo lab validate --check E-002
 ```
 
 ### Rebuilding after ANY source change
 
 ```bash
 cd /opt/lab-env
-go mod download && go build -o lab . && echo "CLI OK"
-cd service && go mod download && go build -o /opt/app/server . && echo "Service OK"
+sudo CGO_ENABLED=0 go build -buildvcs=false -o /usr/local/bin/lab . && echo "CLI OK"
+cd service && CGO_ENABLED=0 go build -buildvcs=false -o /tmp/app-server . && sudo mv /tmp/app-server /opt/app/server && echo "Service OK"
 sudo chown appuser:appuser /opt/app/server && sudo chmod 750 /opt/app/server
 sudo systemctl restart app.service
 sleep 1
-./lab validate
+sudo lab validate
 ```
 
 ---
 
 ## 7. Full fault matrix walkthrough
 
-Run this script from the `/opt/lab-env` directory. It applies every fault, validates the expected failure pattern, resets, and re-validates. Non-reversible faults (F-008, F-014) require `--yes` and an R3 reset (binary rebuild).
-
-```bash
-#!/usr/bin/env bash
-# /opt/lab-env/scripts/run-fault-matrix.sh
-# Runs all reversible faults through apply → validate → reset → validate.
-# F-008 and F-014 (non-reversible) are excluded — run manually with care.
-set -euo pipefail
-
-# Verify dependencies
-command -v jq >/dev/null 2>&1 || { echo "jq is required but not installed. Run bootstrap first."; exit 1; }
-command -v ./lab >/dev/null 2>&1 || { echo "./lab not found. Run: go build -o lab . first."; exit 1; }
-
-LAB="./lab"
-PASS=0
-FAIL=0
-
-run_fault() {
-    local id="$1"
-    echo ""
-    echo "════════════════════════════════════════"
-    echo "  $id"
-    echo "════════════════════════════════════════"
-
-    echo "  [pre-flight]"
-    ${LAB} validate > /dev/null || { echo "  FAIL: pre-flight failed"; (( FAIL++ )); return; }
-
-    echo "  [apply]"
-    ${LAB} fault apply "${id}" --yes 2>&1 | tail -3
-
-    echo "  [validate — expect failure]"
-    if ${LAB} validate > /dev/null; then
-        echo "  WARN: validate passed after apply (check fault definition)"
-    else
-        echo "  OK: validate correctly shows failures"
-    fi
-
-    echo "  [status]"
-    ${LAB} status --json | jq -r '"  state=\(.state) fault=\(.active_fault // "none")"'
-
-    echo "  [reset]"
-    ${LAB} reset 2>&1 | tail -3
-
-    echo "  [post-reset validate]"
-    if ${LAB} validate > /dev/null; then
-        echo "  PASS: environment is CONFORMANT after reset"
-        (( PASS++ ))
-    else
-        echo "  FAIL: environment not conformant after reset"
-        ${LAB} validate
-        (( FAIL++ ))
-    fi
-}
-
-cd /opt/lab-env
-
-# Reversible faults — safe to run in sequence
-REVERSIBLE="F-001 F-002 F-003 F-004 F-005 F-006 F-007 F-009 F-010
-            F-013 F-015 F-016 F-017 F-018"
-
-for fault in ${REVERSIBLE}; do
-    run_fault "${fault}"
-done
-
-echo ""
-echo "════════════════════════════════════════"
-echo "  Results: ${PASS} passed, ${FAIL} failed"
-echo "════════════════════════════════════════"
-
-# Non-reversible faults — manual only
-echo ""
-echo "NOTE: F-008 and F-014 are non-reversible (require R3/binary rebuild)."
-echo "      Run manually: ./lab fault apply F-008 --yes"
-echo "      Recovery:     cd /opt/lab-env/service && go build -o /opt/app/server ."
-echo "                    sudo chown appuser:appuser /opt/app/server && sudo chmod 750 /opt/app/server"
-echo "                    sudo systemctl restart app.service && ./lab reset"
-
-[[ "${FAIL}" -eq 0 ]] && exit 0 || exit 1
-```
+The fault matrix script is installed at `/opt/lab-env/scripts/run-fault-matrix.sh`. It applies every reversible fault, validates the expected failure pattern, resets, and re-validates.
 
 **Run it:**
 ```bash
-chmod +x /opt/lab-env/scripts/run-fault-matrix.sh
-sudo /opt/lab-env/scripts/run-fault-matrix.sh
+sudo bash /opt/lab-env/scripts/run-fault-matrix.sh
 ```
 
-### Baseline behaviors (F-011, F-012) — observe without applying
-
-F-011 and F-012 are not faults — they are observable properties of the canonical environment. `lab fault apply` will refuse them. Verify them separately:
-
-**F-011 — nginx proxy timeout shorter than `/slow` response:**
-```bash
-# Already covered in Section 4 F-011 demo above.
-# Quick check: validate exits 0 (not a failure)
-./lab validate
-# CONFORMANT — F-011 produces no failing checks
-```
-
-**F-012 — TLS certificate is self-signed (expected):**
-```bash
-# Certificate exists and is valid (F-006 check passes)
-openssl x509 -noout -text -in /etc/nginx/tls/app.local.crt | grep -E 'Subject:|Issuer:|Not After'
-# Subject: CN=app.local
-# Issuer: CN=app.local  ← self-signed (Subject = Issuer)
-# Not After: <365 days from provisioning>
-
-# E-005 uses -k (skip verify) because the cert is self-signed
-curl -sk https://app.local/health
-# {"status":"ok"}
-```
+The script excludes F-008 and F-014 (non-reversible, manual only) and uses the `lab` binary from PATH (installed by bootstrap at `/usr/local/bin/lab`).
 
 ---
 
 ## 8. Common failure modes and triage
 
-> **Note on `./lab validate` vs `validate.sh`:** `./lab validate` runs the Go conformance engine and produces structured output with PASS/FAIL per check. `sudo bash /opt/lab-env/scripts/validate.sh` runs the same checks as bash commands and is used by bootstrap. Both exit 0 for CONFORMANT. The Go CLI output is more detailed; the shell script is simpler for quick manual runs.
-
 | Symptom | Likely cause | Diagnosis |
 |---|---|---|
-| `go build` fails: `module not found` | Go module cache empty, no internet | `go mod download` first; or `go build -mod=vendor` with vendor/ present |
-| `go build` fails: `cannot find package` | Wrong Go version | `go version` (need 1.21+); `go env GOPATH` |
+| `go build` fails: `module not found` | Go module cache empty, no internet | Run `go mod download` first, or use `go build -mod=vendor` |
+| `go build` fails: `cannot find package` | Wrong Go version | `go version` (need 1.22+); `go env GOPATH` |
 | Service fails to start | `appuser` UID wrong | `id -u appuser` (must be 1001) |
 | Service fails to start | Config file missing | `ls -la /etc/app/config.yaml` |
 | Service fails to start | Binary not executable | `ls -la /opt/app/server` (must be -rwxr-x---) |
 | Service fails to start | Binary wrong ownership | `stat -c '%U:%G' /opt/app/server` (must be appuser:appuser) |
-| Service exits after 5 restarts | `StartLimitBurst` hit — persistent fault | `journalctl -u app.service -n 30 --no-pager` |
+| Service fails to start | Binary wrong architecture | `file /opt/app/server` (must match `uname -m`) |
+| Service exits after 5 restarts | `StartLimitBurst` hit — persistent fault | `journalctl -u app.service -n 30 --no-pager`; reset with `sudo systemctl reset-failed app.service` |
 | All E-series checks fail | nginx not running | `systemctl status nginx` |
 | All E-series checks fail | nginx wrong config | `sudo nginx -t` |
 | E-004 fails (X-Proxy header missing) | nginx not proxying (direct hit) | `curl -I http://localhost/ \| grep X-Proxy` |
 | E-005 fails (HTTPS) | TLS cert missing or expired | `openssl x509 -checkend 0 -in /etc/nginx/tls/app.local.crt` |
 | Telemetry missing | `/run/app` not created by systemd | `ls /run/app` — if absent, `systemctl restart app.service` |
 | Telemetry missing | Service crashed before first write | `journalctl -u app.service -n 10 --no-pager` |
-| `lab status` shows UNKNOWN | classification_valid=false (post-interrupt) | `./lab status` again to reclassify |
-| `lab fault apply` hangs | Stale lock file | `cat /var/lib/lab/lab.lock` then `kill -0 <pid>` — if not running, `rm /var/lib/lab/lab.lock` |
+| `lab status` shows UNKNOWN | classification_valid=false (post-interrupt) | `sudo lab status` again to reclassify |
+| `lab fault apply` hangs | Stale lock file | `cat /var/lib/lab/lab.lock` then `kill -0 <pid>` — if not running, `sudo rm /var/lib/lab/lab.lock` |
 | Chaos injection has no effect | chaos.env wrong permissions | `stat /etc/app/chaos.env` (must be 0644) |
 | Chaos injection has no effect | Service not restarted after editing chaos.env | `sudo systemctl restart app.service` |
 | OOM chaos doesn't kill process | cgroup limit not enforced | `systemctl show app.service \| grep MemoryMax` (must be 268435456) |
 | OOM chaos doesn't kill process | Swap enabled | `swapon --show` — if non-empty, `sudo swapoff -a` |
 | Log file has null bytes | Logging opened without O_APPEND | `xxd /var/log/app/app.log \| grep ' 0000 '` |
 | F-007 Apply has no effect | nginx.conf missing upstream block | `grep upstream /etc/nginx/sites-enabled/app` |
-| `lab reset` fails | Active fault not in catalog | `./lab status` — if UNKNOWN, `./lab status` again first |
+| `lab reset` fails | Active fault not in catalog | `sudo lab status` — if UNKNOWN, `sudo lab status` again first |
 | Unit tests fail | Missing exported test hooks | Check that `SetDirForTest`, `SetStateTouchPathForTest`, `CanonicalFileEntry` are exported |
-| Phase C concurrent test shows inconsistent state | Expected transient race — rerun | Run `./lab status` after; must resolve to consistent state |
+| Phase C concurrent test shows inconsistent state | Expected transient race — rerun | Run `sudo lab status` after; must resolve to consistent state |
 
 ---
 
@@ -627,77 +499,17 @@ curl -sk https://app.local/health
 
 Used when F-008 (SIGTERM ignored), F-014 (zombie accumulation), or the environment is severely broken.
 
-### F-008 — SIGTERM ignored (apply + observe + recover)
-
-```bash
-# Apply (requires --yes; non-reversible)
-./lab fault apply F-008 --yes
-
-# Observe: lab validate exits 0 while fault is active
-# The fault is invisible until systemctl stop is attempted
-./lab validate
-# === CONFORMANT (or DEGRADED): 23 checks pass ===
-# F-008 does NOT produce failing checks while the service runs
-
-# Prove the fault: stopping the service should hang ~90 seconds (SIGKILL required)
-sudo timeout 5 systemctl stop app.service || echo "SIGTERM ignored — stop timed out as expected"
-
-# Recover (R3 — rebuild required to clear the compiled-in flag)
-cd /opt/lab-env/service
-go mod download
-go build -o /opt/app/server .
-sudo chown appuser:appuser /opt/app/server
-sudo chmod 750 /opt/app/server
-sudo systemctl start app.service
-sleep 2
-./lab reset
-./lab validate
-# must print: CONFORMANT
-```
-
-### F-014 — zombie accumulation (apply + observe + recover)
-
-```bash
-# Apply (requires --yes; non-reversible)
-./lab fault apply F-014 --yes
-
-# Observe: zombies accumulate over time as requests complete
-# Check zombie count (increases with each / request)
-curl http://localhost/ > /dev/null
-ps aux | grep -c 'Z'
-# count increases after requests
-
-# Recover (R3 — same binary rebuild path as F-008)
-cd /opt/lab-env/service
-go mod download
-go build -o /opt/app/server .
-sudo chown appuser:appuser /opt/app/server
-sudo chmod 750 /opt/app/server
-sudo systemctl restart app.service
-sleep 2
-./lab reset
-./lab validate
-# must print: CONFORMANT
-```
+> **Current implementation note:** F‑008 and F‑014 Apply return an error immediately (`binary rebuild required — implement in deployment pipeline`). The faults are not applied automatically. To fully test these faults, the service binary must be manually rebuilt with the appropriate ldflags. R3 reset is the recovery path regardless of how the fault was activated.
 
 ### General R3 recovery (severely broken environment)
 
 ```bash
-# Step 1: Rebuild the binary (clears any compiled-in fault flags)
-cd /opt/lab-env/service
-go mod download
-go build -o /opt/app/server .
-sudo chown appuser:appuser /opt/app/server
-sudo chmod 750 /opt/app/server
-
-# Step 2: Re-run bootstrap to restore all canonical files and restart services
-# (Bootstrap is idempotent — safe to run on an existing environment.
-#  It will NOT rebuild the binary again since it was just built above.
-#  It WILL overwrite config files, reinstall the systemd unit, and restart services.)
+# Re-run bootstrap — it is idempotent and will restore all canonical files,
+# rebuild both binaries, and restart services.
 sudo bash /opt/lab-env/scripts/bootstrap.sh
 
-# Step 3: Verify
-./lab validate
+# Verify
+sudo lab validate
 # must print: CONFORMANT
 ```
 
@@ -713,7 +525,7 @@ sudo bash /opt/lab-env/scripts/bootstrap.sh
 
 What it will skip (already exists): user creation, fstab entry, TLS cert (if valid), /etc/hosts entry, nftables chain (if present), logrotate timer (if active).
 
-What it will always do: overwrite canonical config files, reinstall systemd unit, restart services, run validate.sh.
+What it will always do: rebuild both binaries, overwrite canonical config files, reinstall systemd unit, restart services, run validate.sh.
 
 ---
 
@@ -731,10 +543,7 @@ time curl http://localhost/health # should return immediately (latency exempt)
 cat /run/app/telemetry.json | jq '{chaos_active, chaos_modes}'
 # { "chaos_active": true, "chaos_modes": ["latency"] }
 
-# 3. Verify via control plane
-./lab validate    # L-004 may flag chaos_active
-
-# 4. Clear chaos
+# 3. Clear chaos
 echo "" | sudo tee /etc/app/chaos.env
 sudo systemctl restart app.service
 cat /run/app/telemetry.json | jq '{chaos_active, chaos_modes}'
@@ -764,25 +573,25 @@ tail -f /var/log/app/app.log | jq .
 tail -20 /var/lib/lab/audit.log | jq .
 
 # List all faults
-./lab fault list
+sudo lab fault list
 
 # Get fault details
-./lab fault info F-004
+sudo lab fault info F-004
 
 # Show state history
-./lab history
+sudo lab history
 
 # Reset to specific tier
-./lab reset --tier R1    # config/permissions only
-./lab reset --tier R2    # + service files + restart
-./lab reset --tier R3    # full rebuild via bootstrap
+sudo lab reset --tier R1    # service restart only
+sudo lab reset --tier R2    # + restore canonical files
+sudo lab reset --tier R3    # full reprovision via bootstrap
 
 # Run a single conformance check
-./lab validate --check E-001
-./lab validate --check F-004
+sudo lab validate --check E-001
+sudo lab validate --check F-004
 
 # Force status reclassification after interrupt
-./lab status
+sudo lab status
 
 # Run unit tests for one package
 go test ./internal/state/...

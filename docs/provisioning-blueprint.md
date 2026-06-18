@@ -28,12 +28,14 @@ Each step falls into one of three categories:
 |---|---|---|---|---|
 | 01 | Root check | Safe-to-repeat | `id -u == 0` | Passes silently or fails with clear message |
 | 02 | Install packages | Safe-to-repeat | `apt-get install -y` is idempotent by design | No-ops packages already at correct version |
+| 02b | Verify Go version | Guard-checked | Go version ≥ 1.22 | Logs current version; fails if below required minimum |
 | 03 | Create appuser | Guard-checked | `getent group appuser` / `id appuser` | Logs existing UID/GID; fails if UID/GID mismatch |
 | 04 | Create directories | Safe-to-repeat | `install -d` is idempotent | Mode/ownership re-applied; no error if dir exists |
 | 05 | Mount loopback storage | Guard-checked | `mountpoint -q /var/lib/app` | Skips image creation and mount; checks fstab entry separately |
 | 06 | Configure cgroup slice | Always-overwrites | None | Slice unit rewritten from canonical content; `daemon-reload` always runs |
 | 07 | Install config files | Guard-checked | `[[ ! -f /etc/app/config.yaml ]]` | Skips if file exists; does NOT restore drift |
-| 08 | Build Go binary | Always-overwrites | None | Binary always rebuilt and reinstalled |
+| 08 | Build Go service binary | Always-overwrites | None | Binary always rebuilt and reinstalled |
+| 08b | Build lab CLI binary | Always-overwrites | None | Binary always rebuilt and installed to `/usr/local/bin/lab` |
 | 09 | Install systemd unit | Always-overwrites | None | Unit file rewritten from canonical content; `daemon-reload` always runs |
 | 10 | Generate TLS certificate | Guard-checked | File exists AND `openssl x509 -checkend 0` passes | Skips if cert exists and is not expired |
 | 11 | Configure /etc/hosts | Guard-checked | `grep -qF app.local /etc/hosts` | Skips if entry already present |
@@ -96,13 +98,15 @@ If the image file was partially written (e.g., truncated at 32 MiB instead of 50
 
 Go build failures leave no partial artifact at `/opt/app/server` (the build uses a temp `GOPATH` and only installs on success). Re-running re-attempts the build cleanly. Common causes: missing `golang-go` package (step 02 failed), missing source at `/opt/lab-env/service/` (repository not cloned to the expected path), or Go version below 1.22.
 
+**Architecture mismatch:** If the script hardcodes `GOARCH=amd64` but the host is `aarch64`, the kernel will reject the binary with `Exec format error`. The script does not cross-compile; it builds for the host architecture by default. If cross-compilation is needed for a specific target, set `GOARCH` explicitly, but the canonical bootstrap builds directly on the target VM and uses the host’s native architecture.
+
 **Step 10 — TLS certificate generation failure**
 
 `openssl req` failure leaves no partial cert file. Re-run retries generation. Verify `openssl` is installed (step 02) and `/etc/nginx/tls/` directory exists (step 04).
 
 **Step 15 — sudoers validation failure**
 
-A `visudo -c` failure means the generated sudoers content has a syntax error. The temp file is deleted before the script exits — no broken sudoers file is ever installed. This failure requires a code fix, not a re-run.
+A `visudo -c` failure means the generated sudoers content has a syntax error. The temp file is deleted before the script exits — no broken sudoers file is ever installed. This failure requires a code fix, not a re-run. Common issues: wildcards (`*`) are not allowed in sudoers command arguments; colons in `chown appuser:appuser` must be escaped (`appuser\:appuser`).
 
 **Step 16 — service startup failure**
 
@@ -127,6 +131,8 @@ Three conditions require manual intervention before re-running:
 | Fresh VM, first run | Installed if absent | Built and installed | Started |
 | Re-run on conformant system | Skipped (guard check) | Rebuilt and reinstalled | Restarted |
 | `lab reset --tier R3` | Restored to canonical unconditionally | Rebuilt and reinstalled | Restarted |
+
+**Important:** After the very first bootstrap on a fresh VM, `lab provision` must be run (or any command that writes `state.json`, such as `lab status`). The bootstrap does not create `/var/lib/lab/state.json` — that file is the control plane’s recorded state, and it is initialised by the first `lab` command that writes it. Until `state.json` exists, commands like `lab fault apply` will fail with `state file not found`.
 
 ---
 
@@ -153,7 +159,7 @@ These files are installed by bootstrap but are not embedded in the binary. They 
 | `/etc/logrotate.d/app` | root:root | 0644 | copytruncate required |
 | `/etc/nginx/tls/app.local.crt` | root:root | 0644 | Regenerated if missing or expired |
 | `/etc/nginx/tls/app.local.key` | root:root | 0640 | Regenerated with cert |
-| `/etc/app/chaos.env` | appuser:appuser | 0644 | Empty file; must be 0644 not 0600 |
+| `/etc/app/chaos.env` | appuser:appuser | 0644 | Empty file; must be 0644 (not 0600) so systemd’s EnvironmentFile can read it |
 | `/etc/sudoers.d/lab-appuser` | root:root | 0440 | Validated with visudo -c |
 
 ### 3.3 Runtime-Created Artifacts
@@ -164,7 +170,7 @@ These files are created at runtime by the service or control plane and are not i
 |---|---|---|---|---|
 | `/var/log/app/app.log` | appuser:appuser | 0640 | Service on startup | L-001, L-002, L-003 |
 | `/var/lib/app/state` | appuser:appuser | — | Service on each `GET /` | E-002 (indirectly) |
-| `/var/lib/lab/state.json` | root:root | 0644 | `lab` binary | All commands |
+| `/var/lib/lab/state.json` | root:root | 0644 | `lab` binary — initialised by `lab provision` or `lab status`, not by bootstrap | All commands |
 | `/var/lib/lab/audit.log` | root:root | 0644 | `lab` binary | Append-only |
 | `/run/app/healthy` | appuser:appuser | — | Service after startup | Step 16 readiness gate |
 
@@ -184,14 +190,20 @@ These files are created at runtime by the service or control plane and are not i
 
 | Property | Value | How verified |
 |---|---|---|
+| **Service binary** | | |
 | Path | `/opt/app/server` | F-001 conformance check |
 | Owner | appuser:appuser | F-001 conformance check |
 | Mode | 0750 | F-001 conformance check |
-| Build flags | `CGO_ENABLED=0 GOOS=linux GOARCH=amd64` | Produces fully static binary |
+| Build command | `CGO_ENABLED=0 go build -o /opt/app/server .` (builds for host architecture — no cross‑compile flags) | Binary runs on target |
 | Process name | `server` | P-001 conformance check (`pgrep -u appuser server`) |
 | Bind address | `127.0.0.1:8080` | P-002 conformance check |
+| **Control plane binary** | | |
+| Path | `/usr/local/bin/lab` | `which lab` |
+| Owner | root:root | — |
+| Mode | 0755 | — |
+| Build command | `CGO_ENABLED=0 go build -o /usr/local/bin/lab .` (from repo root; builds for host architecture) | Binary runs on target |
 
-The binary is rebuilt from source on every R3 reset. There is no pinned binary checksum because the binary is always compiled locally from the repository source — a checksum would only be meaningful if the binary were distributed as a pre-built artifact, which it is not. Content integrity is provided by the source code, not the binary hash.
+The binaries are rebuilt from source on every R3 reset. There is no pinned binary checksum because they are always compiled locally from the repository source — a checksum would only be meaningful if the binary were distributed as a pre-built artifact, which it is not. Content integrity is provided by the source code, not the binary hash.
 
 ### 3.6 Config File Content Verification
 
@@ -246,6 +258,12 @@ The authoritative step sequence with guard conditions and idempotency behavior, 
 **Guard:** `apt-get install -y` — package manager handles idempotency.
 **Note:** if a package version changes between runs, the newer version is installed. This is intentional.
 
+### Step 02b — Verify Go version
+**Purpose:** ensure the installed Go version is at least 1.22 (required by the service module).
+**Guard:** `go version` output is parsed and compared against a minimum major/minor version.
+**Failure:** if Go is too old, the script fails with a clear message directing to manual installation from `go.dev/dl/`.
+**Idempotency:** the check runs every bootstrap; it will fail again if Go has not been upgraded.
+
 ### Step 03 — Create appuser
 **Purpose:** create the service user with fixed UID 1001 / GID 1001.
 **Guard:** `getent group appuser` for the group; `id appuser` for the user.
@@ -271,10 +289,17 @@ The authoritative step sequence with guard conditions and idempotency behavior, 
 **Guard:** `[[ ! -f path ]]` — skips if file exists.
 **Important:** this step does NOT restore drift. See §1.3 for rationale.
 
-### Step 08 — Build Go binary
+### Step 08 — Build Go service binary
 **Purpose:** compile the service from source and install at `/opt/app/server`.
 **Guard:** none — always rebuilds.
+**Build command:** `CGO_ENABLED=0 go build -o /opt/app/server .` (no cross‑compile flags — builds for the host architecture).
 **Rationale:** the binary is always rebuilt to ensure it reflects current source. Drift between the binary and source (e.g., from a partial F-008 recovery) is always corrected.
+
+### Step 08b — Build lab CLI binary
+**Purpose:** compile the control plane CLI from the repository root and install at `/usr/local/bin/lab`.
+**Guard:** none — always rebuilds.
+**Build command:** `CGO_ENABLED=0 go build -o /usr/local/bin/lab .` (from repo root, builds for host architecture).
+**Rationale:** like the service binary, the CLI is always rebuilt from source to ensure it reflects the current code. This step was added after discovering that the original bootstrap only built the service binary, leaving `lab` unavailable.
 
 ### Step 09 — Install systemd unit
 **Purpose:** install `app.service` unit file.
@@ -307,10 +332,10 @@ The authoritative step sequence with guard conditions and idempotency behavior, 
 ### Step 15 — Configure sudoers
 **Purpose:** grant `appuser` passwordless sudo for the exact commands needed for fault apply/recover.
 **Guard:** none — always overwrites.
-**Safety:** `visudo -c` validates the generated content before installation. A syntax error in the generated sudoers aborts the script without installing the broken file.
+**Safety:** `visudo -c` validates the generated content before installation. A syntax error in the generated sudoers aborts the script without installing the broken file. The sudoers rules use explicit paths and escaped colons (no wildcards).
 
 ### Step 16 — Enable, start, verify
 **Purpose:** enable and start both services; poll for service readiness; run the conformance suite.
 **Guard:** `systemctl enable` is idempotent; `restart` is always issued.
 **Readiness gate:** polls `/run/app/healthy` for up to 10 seconds (20 × 500ms). This file is written by the service after its startup sequence completes.
-**Final gate:** `validate.sh` must exit 0. If validation fails, bootstrap exits 1 — provisioning is not considered complete.
+**Final gate:** `validate.sh` must exit 0. If validation fails, bootstrap exits 1 — provisioning is not considered complete. After a successful bootstrap, `lab provision` should be run to initialise `state.json`.

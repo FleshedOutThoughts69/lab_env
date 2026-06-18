@@ -1229,6 +1229,83 @@ The following are explicitly outside the scope of this environment. Adding any o
 
 ---
 
+# §12 — Current Implementation Status
+
+> **Purpose:** this section documents the delta between the aspirational specification above and the implementation that was built, tested, and verified on live Ubuntu 22.04 (aarch64) hardware as of June 2026. It is a living section — update it whenever the implementation gains new capabilities.
+
+## 12.1 — Platform & Architecture
+
+- The canonical environment is verified on **aarch64** (ARM64) in addition to x86‑64.
+- The bootstrap script builds binaries for the **host architecture** rather than hardcoding `GOARCH=amd64`. Cross‑compilation flags were removed to support this.
+
+## 12.2 — Users
+
+- Only the **appuser** (UID 1001) is created by the bootstrap. There is no `devuser` account.
+- All testing was performed as `root` or as a user with passwordless sudo.
+- The `devuser` security model, learner sudo scope, and associated docs remain aspirational.
+
+## 12.3 — Go Service Endpoints
+
+| Endpoint | Specification | Current Implementation | Notes |
+|---|---|---|---|
+| `GET /health` | `{"status":"ok","app_env":"…","config_loaded":true}` | `{"status":"ok"}` | Minimal liveness probe; additional fields are aspirational. |
+| `GET /` (success) | `{"status":"ok","path":"/"}` | `{"status":"ok","env":"<app_env>"}` | Returns the sanitised `APP_ENV` value; the `path` field is not present. |
+| `GET /` (failure) | `{"status":"error","msg":"state write failed"}` | Identical | Fully implemented. |
+| `GET /slow` | 5‑second delay, returns JSON with delay field | 5‑second delay, returns `{"status":"ok"}` | Works; the additional JSON fields are aspirational. |
+| `GET /reset` | TCP RST via SO_LINGER | **Not implemented** | The endpoint does not exist. |
+| `GET /headers` | Echoes proxy headers | **Not implemented** | The endpoint does not exist. |
+
+## 12.4 — Configuration File Schema
+
+- The canonical `config.yaml` contains only `server.addr` and `app_env`. The spec’s `log` and `state` stanzas are not used.
+- The service reads only `server.addr` and `app_env`; all other spec fields are inert.
+
+## 12.5 — systemd Unit File
+
+- The embedded `app.service` includes `RuntimeDirectory=app` (required for `/run/app`), `TimeoutStopSec=10`, `RestartSec=2s`, `StartLimitBurst=5`, and basic hardening.
+- The spec’s extended hardening options (`PrivateTmp`, `LimitNOFILE`, `NoNewPrivileges`) and default `TimeoutStopSec` are aspirational.
+
+## 12.6 — nginx Configuration
+
+- The actual embedded configuration differs in structure: it has three server blocks (HTTP redirect for `app.local`, HTTPS termination, and a `localhost` block for conformance checks) and more detailed proxy headers.
+- The spec’s single‑block representation is a simplification; the canonical file in `internal/config/nginx.conf` is authoritative.
+
+## 12.7 — Package Dependencies
+
+- The bootstrap installs: `nginx`, `openssl`, `curl`, `jq`, `logrotate`, `nftables`, `golang-go`, `iproute2`, `procps`.
+- The spec’s additional learner tools (`tcpdump`, `strace`, `vim`, etc.) are not installed by the bootstrap but can be added manually.
+
+## 12.8 — Bootstrap Sequence
+
+- The script has **17 steps** (original 16 plus a Go‑version check and a `lab` CLI build).
+- It does **not** create `devuser`; it builds both the service binary (`/opt/app/server`) and the control‑plane binary (`/usr/local/bin/lab`).
+- Configuration files are installed from `internal/config/`, not from a top‑level `config/` directory.
+- The loopback mount is created at `/var/lib/lab/app-state.img` (50 MiB sparse ext4) and mounted at `/var/lib/app`.
+
+## 12.9 — Faults F‑008 and F‑014
+
+- Both Apply functions **immediately return an error**; they do not perform a binary rebuild.
+- Testing the full behaviour requires manual rebuild with the appropriate ldflags.
+- The R3 reset path recovers both faults correctly.
+
+## 12.10 — Reset Path
+
+- The `lab reset` command was extended to call `systemctl reset-failed` before restarting the app service, preventing start‑limit cascade failures during the fault matrix.
+- The `lab status` command now acquires the mutation lock before writing `state.json`, resolving the read‑modify‑write race documented in the testing plan.
+
+## 12.11 — Control‑Plane Binary
+
+- The `lab` binary is installed at `/usr/local/bin/lab` (mode 0755).
+- It supports all eight commands from the spec; output determinism and golden fixtures were verified on the live VM.
+
+## 12.12 — Documentation
+
+- All major spec documents (`conformance-model.md`, `system-state-model.md`, `fault-model.md`, `control-plane-contract.md`) remain aspirational in areas not yet implemented.
+- The testing plan (`docs/testing-plan.md`) is fully executed; Phase 0 through Phase D are complete on real hardware.
+- The recovery playbook, fault matrix runbook, fault implementation guide, provisioning blueprint, and operational trace spec have been updated to reflect the verified behaviour.
+
+---
+
 # §13 — Lab Control Plane
 
 > **Instantiation note:** This section describes how the lab control plane is instantiated in this environment. Semantic authority for all state, transition, fault, and conformance definitions resides in the model documents. This section references those definitions and specifies the implementation target. It does not redefine any semantic model content.

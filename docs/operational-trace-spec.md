@@ -44,7 +44,9 @@ Example: recorded BROKEN, runtime healthy.
 [obs]  CheckProcess, CheckPort, CheckEndpoint  → all healthy
        → detected: CONFORMANT  recorded: BROKEN  — mismatch
 [audit] entry_type: reconciliation  from: BROKEN  to: CONFORMANT
+[lock] acquire
 [write] state.json: state=CONFORMANT, classification_valid=true, last_status_at updated
+[unlock]
 [exit 0]
 ```
 
@@ -57,7 +59,9 @@ Example: recorded BROKEN, runtime healthy.
 [obs]  ServiceActive, CheckProcess, CheckPort, CheckEndpoint
        → detected from runtime (ignores cached state)
 [audit] entry_type: reconciliation  from: (prior cached)  to: (detected)
+[lock] acquire
 [write] state.json: classification_valid=true, state=(detected)
+[unlock]
 [exit 0]
 ```
 
@@ -114,6 +118,7 @@ Example: recorded BROKEN, runtime healthy.
 [audit] entry_type: executor_op  op: Chmod  args: /var/lib/app 0000
 [mut]  Chmod("/var/lib/app", 0000)
 [audit] entry_type: state_transition  from: CONFORMANT  to: DEGRADED  fault: F-004
+[lock] acquire
 [write] state.json: state=DEGRADED, active_fault={id:F-004, applied_at:...}
 [unlock]
 [exit 0]
@@ -158,6 +163,8 @@ No mutation. No state change.
 [mut]  Chmod(BinaryPath, 0750)
 [audit] entry_type: executor_op  op: Systemctl  args: daemon-reload
 [mut]  Systemctl("daemon-reload","")
+[audit] entry_type: executor_op  op: Systemctl  args: reset-failed app.service
+[mut]  Systemctl("reset-failed","app.service")
 [audit] entry_type: executor_op  op: Systemctl  args: restart app.service
 [mut]  Systemctl("restart","app.service")
 [audit] entry_type: executor_op  op: NginxReload
@@ -194,8 +201,8 @@ No mutation. No state change.
 
 ```
 [lock] acquire
-[audit] entry_type: executor_op  op: RunMutation  args: bash /opt/lab-env/bootstrap.sh
-[mut]  RunMutation("bash","/opt/lab-env/bootstrap.sh")
+[audit] entry_type: executor_op  op: RunMutation  args: bash /opt/lab-env/scripts/bootstrap.sh
+[mut]  RunMutation("bash","/opt/lab-env/scripts/bootstrap.sh")
 [obs]  S-001..L-003  ← post-provision validation
 [audit] entry_type: validation_run
 [audit] entry_type: state_transition  from: UNPROVISIONED  to: CONFORMANT (or BROKEN)
@@ -210,11 +217,10 @@ No mutation. No state change.
 
 ```
 [lock]
-[mut]  ... some operations complete ...
+[mut]  ... some operations may have started ...
        ← SIGINT received
-       ← current operation allowed to complete (grace: 30s standard, 120s for provision/R3)
-       ← no further operations started
-[audit] entry_type: interrupt  op: (current op name)  grace_period_exceeded: false
+       ← no further operations started; in-progress operation is abandoned
+[audit] entry_type: interrupt  op: Systemctl  op_args: signal received
        ← classification_valid set to false  ← NOT state=BROKEN
 [write] state.json: classification_valid=false  (state field unchanged)
 [unlock]

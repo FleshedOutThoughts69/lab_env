@@ -248,132 +248,49 @@ No other document may contradict the signal file locations, chaos variable names
 
 ---
 
+## §8 — Current Implementation Status
+
+> **Purpose:** this section documents the delta between the aspirational contract above and the Go service that was built, tested, and verified on live Ubuntu 22.04 (aarch64) hardware as of June 2026.
+
+### 8.1 — Endpoints
+
+| Endpoint | Contract | Implementation | Notes |
+|----------|----------|----------------|-------|
+| `GET /health` | `{"status":"ok","app_env":"…","config_loaded":true}` | `{"status":"ok"}` | Minimal liveness probe; additional fields are aspirational. |
+| `GET /` (success) | `{"status":"ok","path":"/"}` | `{"status":"ok","env":"<app_env>"}` | Returns the sanitised `APP_ENV` value; the `path` field is not present. |
+| `GET /` (failure) | `{"status":"error","msg":"state write failed"}` | Identical | Fully implemented. |
+| `GET /slow` | 5‑second delay, returns JSON with delay field | 5‑second delay, returns `{"status":"ok"}` | Works; the additional JSON fields are aspirational. |
+| `GET /reset` | TCP RST via SO_LINGER | **Not implemented** | The endpoint does not exist. |
+| `GET /headers` | Echoes proxy headers | **Not implemented** | The endpoint does not exist. |
+
+### 8.2 — Telemetry Schema
+
+- The implemented schema includes **12 fields** (the contract lists 10). The additional field is `inode_usage_percent`, added to distinguish inode exhaustion (F‑018) from block exhaustion.
+- `chaos_modes` is always serialised as `[]` (never `null`).
+
+### 8.3 — Chaos Injection
+
+- `CHAOS_LATENCY_MS` and `CHAOS_DROP_PERCENT` are implemented and verified.
+- `CHAOS_OOM_TRIGGER`: a `StartOOMForTest` hook exists but is not exported; OOM chaos can be observed by manually setting the environment variable and restarting the service.
+- `CHAOS_IGNORE_SIGTERM`: implemented as a **build flag** (`FaultIgnoreSIGTERM`) rather than a runtime environment variable. This aligns with fault F‑008, which requires a binary rebuild.
+
+### 8.4 — Signal Files & Status
+
+- All signal files (`/run/app/status`, `/run/app/healthy`, `/run/app/loading`, `/run/app/app.pid`) are fully implemented and verified.
+- Internal status strings match the contract exactly: `Starting`, `Running`, `Degraded`, `Unhealthy`, `ShuttingDown`.
+- The `telemetry.json` file is written atomically every 2 seconds.
+
+### 8.5 — Resource Constraints
+
+- cgroup `app.slice` and the 50 MiB loopback mount are provisioned by `bootstrap.sh` and verified during live testing.
+- The service correctly handles a full disk (returns 500 on `/`) and full inodes (returns 500 on `/`).
+
+### 8.6 — Logging
+
+- Structured JSON logging with `O_APPEND` is implemented.
+- The log file is not reopened on SIGHUP; `copytruncate` logrotate is configured and verified.
+
+---
+
 *End of Application Runtime Contract (Data Plane) v1.0.0.*  
 *Aligned with Canonical Lab Environment Specification v1.5.0, Conformance Model v1.2.0, System State Model v1.3.0, Fault Model v1.2.0.*
-
-
-Yes, this specification is the contract for the Go service (the “Subject App” at `/opt/app/server`). My earlier analysis listed gaps across the entire data plane (platform, control plane, and the service itself). Let me now refocus strictly on **what the Go binary needs to implement** — and what’s missing from the spec to actually build it.
-
----
-
-### What the Go Service Must Do (and What’s Undefined)
-
-#### 1. State machine internals
-The spec says the service must “reflect one of the six canonical states” in `telemetry.json`, but never defines:
-
-- **How** the service detects its own state:
-  - **Degraded**: Read cgroup stats? Which files (`cpu.stat`, `memory.events`)? How does a user-space process read its own cgroup without hardcoding the path? (usually `/sys/fs/cgroup/…`, but cgroup v1 vs v2 matters)
-  - **Latency >500ms**: Latency of *what* exactly? (internal request processing? socket round-trip? self‑ping?) The service must be instrumented to measure it.
-  - **Broken**: The service can’t report its own crash; that’s external. But for a *running* service to declare “Broken” (e.g., out-of-memory condition detected *before* OOM kill), what internal signal? (e.g., allocation failure? `ENOSPC` on the data volume?)
-  - **Fault-State**: The spec says `chaos.env` is active and `LAB-FAULT` chain drops packets. Should the service *detect* that? If so, how? (periodically attempt outbound connections? read `/etc/app/chaos.env` directly?)
-
-- **Transition rules**:
-  - Under what conditions does the service move from **Conformant → Degraded**? “cgroup telemetry showing 90%+ resource utilisation” – 90% of *what* (MemoryMax, CPUQuota, or both)? Over what sliding window?
-  - What clears a fault? Is there a hysteresis to avoid flapping?
-
-#### 2. Telemetry contract
-`/run/app/telemetry.json` is described as “high‑fidelity metrics & error logs” but the schema is absent. Without a fixed JSON structure, the grading/control plane can’t parse it. The service needs to know:
-
-- Required fields: e.g., `state`, `uptime`, `memory_usage_bytes`, `cpu_throttled_seconds`, `open_fds`, `last_error`, `conformance_suite_passed` (boolean)
-- Data types and units
-- Frequency of updates (every second? on change?)
-
-#### 3. Chaos contract
-`/etc/app/chaos.env` “triggers Fault-State via environment variables”. The service must read this, but the exact variables and their semantics are missing. For example:
-
-- `CHAOS_MODE=latency` – inject 500ms delay on every socket response?
-- `CHAOS_MODE=partition` – simulate network drop by refusing all connections?
-- `CHAOS_MODE=corrupt_config` – make the service behave as if config is invalid?
-
-Without this contract, the service can’t implement fault injection.
-
-#### 4. Conformance Suite
-**Conformant** requires “Conformance Suite passes.” If the suite is run *against* the service’s socket, the service must expose specific endpoints or behaviours. The spec doesn’t define:
-
-- What the suite checks (e.g., `GET /health` returns 200, response matches schema, file permissions are correct?)
-- Whether the service runs a self‑test internally and reports the result in telemetry.
-
-#### 5. Recovery / reset
-The service enters **Recovering** when `/run/app/loading` exists and `reset-state.sh` is executing. What does the service do during recovery? Does it:
-
-- Accept no traffic?
-- Re‑initialise its internal state?
-- Rerun integrity checks?
-- Eventually remove `/run/app/loading` and transition to **Conformant**?
-
-The service’s internal recovery logic is completely unspecified.
-
-#### 6. Miscellaneous operational details
-- **PID file**: “PID file missing” is evidence for Broken, but no path is given. The service must write one — where? `/run/app/app.pid` is a reasonable guess, but must be defined.
-- **Socket protocol**: The socket `/run/app/app.sock` is the “primary interface”. What protocol? (HTTP over Unix socket? gRPC? raw JSON stream?) The service can’t be written without knowing what to speak.
-- **`/run/app/status` string**: Must exactly match canonical state names? Is it a plain text file containing only “Degraded”? The service needs a precise format.
-
----
-
-### Distinction: what’s the service’s job vs. the platform’s
-Items like the systemd unit file, nftables rules, cgroup creation, and loopback mount are **platform responsibilities**, not service code. However, the service’s behaviour *depends* on them (e.g., it can only detect OOM if the cgroup is properly set up; it can’t self‑declare **Fault-State** unless the rules drop *its* traffic). The spec should still define them, because you can’t test the Go service in isolation without a matching environment.
-
-**Bottom line:** Even when zooming in on just the Go service, critical specifications — state transition rules, telemetry schema, chaos variable contract, recovery behaviour, and the socket protocol — are missing. I’d recommend filling those in first, as they are the minimum needed for the developer to start coding the subject app.
-
-Excellent, this is a solid consolidation of constraints. I’ll focus on the few things that, if unaddressed, will cause the most pain downstream — high ROI feedback.
-
----
-
-### 1. `/run/app/status` strings don’t match the canonical states
-
-You listed `Starting`, `Running`, `Degraded`, `Unhealthy`, `ShuttingDown`.  
-The Data Plane Spec says `/run/app/status` must be a *“Direct State Mirror”* of the six canonical states: **Conformant, Degraded, Non‑Conformant, Fault‑State, Broken, Recovering**.
-
-If the control plane parser expects `Conformant` but gets `Running`, grading breaks. At best you need a mapping layer, but that’s a brittle hidden contract.
-
-**Recommendation:** Use canonical state names in the status file. Map internal phases (like startup) to the closest canonical state: e.g., `Starting` → `Recovering`, `Running` → `Conformant`, `Unhealthy` → `Broken`. Add a comment in the code that the value must match the spec exactly.
-
----
-
-### 2. Telemetry schema must be locked down now
-
-The conformance suite and the control plane will read `telemetry.json` every 2 seconds. Without a concrete schema you’ll have silent mismatches.
-
-The constraints already imply several fields: `chaos_active`, `chaos_modes`, plus process metrics. You need exactly 10 fields, so define them all before coding. Missing ones likely include: `state` (canonical), `uptime`, `disk_usage_percent`, `cpu_percent`, `memory_rss_mb`, `open_fds`, `last_error`. The order matters for JSON if the schema is positional? Probably an object, but field names must be exact.
-
-**High‑impact action:** Write the JSON schema as a struct with tags and share it with the control‑plane team now. That one‑time investment prevents weeks of integration head‑scratching.
-
----
-
-### 3. What happens when `/var/lib/app/state` write fails?
-
-The `/` handler must touch `/var/lib/app/state`. If the state directory is broken (F‑004), that write will fail. The spec is silent on the response code. You need `/health` to return 200 and `/` to *not* return 200 to produce the diagnostic pattern. Likely return `503 Service Unavailable` and log the error. Without a clear contract, someone will inadvertently return `200` and break the fault signature.
-
-**Decide now:** On write error, return `503` (or `500`) and set status to `Degraded` in the current request cycle. Also ensure `/health` **never** touches that path.
-
----
-
-### 4. OOM chaos implementation is dangerous if not isolated
-
-`CHAOS_OOM_TRIGGER` should force an out‑of‑memory kill. If you allocate inside the same goroutine that serves requests, you risk deadlocking the whole server before the OOM reaper acts — making the failure nondeterministic.
-
-**Safe pattern:** Spawn a separate goroutine that gradually allocates slices and doesn’t return. Mark `chaos_active = true, chaos_modes = ["oom"]`, and let the OS kill the process. The service will disappear abruptly, which is exactly what the lab expects. Document that this chaos mode will **terminate the process**, so logs will stop mid‑stream.
-
----
-
-### 5. Signal‑file lifecycles need a tiny state machine comment
-
-You have `/run/app/loading`, `/run/app/healthy`, `/run/app/status`. Creation and removal must be choreographed carefully:
-
-- `/run/app/loading` created **before** any other setup, removed **after** all init + self‑test passes
-- `/run/app/healthy` created only when `status = Conformant` (or `Running` if you keep your mapping)
-- On shutdown: remove `/run/app/healthy`, write `status = ShuttingDown` (or `Recovering`?), then remove PID.
-
-This is easy to get wrong in a hurried shutdown sequence. Adding a small table in a comment (e.g., in `signals.go`) that lists the exact order of file writes/removals will save you from subtle race conditions with the control plane polling.
-
----
-
-### Answers to your questions
-
-**Q1 – `/slow` endpoint:** Hardcoded is absolutely right. A fixed 5‑second sleep makes the teaching demo predictable and removes unnecessary configuration surface. I’d hardcode it directly in the handler with a `time.Sleep(5 * time.Second)`.
-
-**Q2 – SIGHUP config reload:** Skip it. Startup‑only chaos environment reading is simpler, avoids the split‑semantics headache (don’t reopen logs, but reload chaos), and aligns with the fact that the fault runbook (F‑020) restarts the service anyway. Don’t build a feature you don’t need to demonstrate.
-
----
-
-These five items are the highest‑leverage fixes before you write a single line. Everything else in your package design looks sound. Once the telemetry schema and status strings are final, you’ll have a stress‑free build.

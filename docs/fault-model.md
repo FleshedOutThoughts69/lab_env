@@ -732,3 +732,27 @@ These entries document observable properties of the canonical conformant environ
 | Conformance impact | No checks fail. E-005 uses `-k` (skip verify) and passes. F-006 (cert valid) passes. This is an intended baseline condition. |
 | Teaching scenario | Demonstrates the distinction between TLS handshake success and certificate verification. Trust installation: `sudo cp /etc/nginx/tls/app.local.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates` |
 | Note | Previously cataloged as F-012. Removed from fault catalog for the same reason as B-001. |
+
+---
+
+## §11 — Current Implementation Status
+
+> **Purpose:** this section documents the delta between the aspirational fault catalog above and the control‑plane implementation that was built, tested, and verified on live Ubuntu 22.04 (aarch64) hardware as of June 2026.
+
+### 11.1 — F‑008 and F‑014 (Non‑Reversible Faults)
+
+- **Catalog says:** `Apply` rebuilds the service binary with the appropriate ldflags, then restarts the service.
+- **Implementation:** `Apply` immediately returns an error (`binary rebuild required — implement in deployment pipeline`). No mutation occurs; the environment remains CONFORMANT.
+- **R3 recovery:** both faults are correctly recovered by `lab reset --tier R3`.
+- **Testing note:** to fully exercise F‑008 or F‑014, the operator must manually rebuild the service binary with the required build flag and redeploy.
+
+### 11.2 — All Other Faults
+
+- All 14 reversible faults (F‑001–F‑007, F‑009, F‑010, F‑013, F‑015–F‑018) are implemented exactly as specified in their catalog entries, including Apply, Recover, PreconditionChecks, and postcondition verification.
+- The one‑fault constraint, atomicity rule, and reversibility semantics are enforced by the current control plane.
+
+---
+
+*End of Fault Model.*
+*Model version: 1.0.0*
+*This document is the authoritative fault definition. Implementation details may differ; see §11 for current status.*

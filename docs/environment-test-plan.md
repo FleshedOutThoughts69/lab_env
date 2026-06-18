@@ -12,15 +12,17 @@
 
 A 30-minute end-to-end check for a freshly provisioned VM. Run this in order after `bootstrap.sh` completes and after any major change to the environment. Each step has an expected outcome on the right — any deviation is a failure.
 
+**Note:** All commands assume the operator has passwordless sudo (as configured by `bootstrap.sh`). If not, prefix with `sudo`.
+
 ### 1.1 Baseline conformance
 
 ```bash
-lab validate
+sudo lab validate
 ```
 **Expected:** `CONFORMANT` on stdout; exit 0; all 23 checks pass.
 
 ```bash
-lab status --json | jq '{state, active_fault, classification_valid}'
+sudo lab status --json | jq '{state, active_fault, classification_valid}'
 ```
 **Expected:** `{"state":"CONFORMANT","active_fault":null,"classification_valid":true}`
 
@@ -33,70 +35,71 @@ Apply one representative fault from each layer, verify it, then reset. These fiv
 **Filesystem layer — F-001 (missing config file)**
 
 ```bash
-lab fault apply F-001
+sudo lab fault apply F-001
 curl -s localhost/health                        # connection refused
-lab status --json | jq .state                  # "DEGRADED"
-lab validate | grep 'FAIL\|S-001'              # S-001 fails
-lab reset --tier R2
-lab validate                                    # CONFORMANT
+sudo lab status --json | jq .state             # "DEGRADED"
+sudo lab validate | grep 'FAIL\|S-001'         # S-001 fails
+sudo lab reset --tier R2
+sudo lab validate                                # CONFORMANT
 ```
 
 **Permissions layer — F-004 (state dir unwritable)**
 
 ```bash
-lab fault apply F-004
+sudo lab fault apply F-004
 curl -s localhost/health                        # 200
 curl -s localhost/                              # 500
-lab validate | grep 'E-002'                    # E-002 fails; E-001 passes
-lab reset --tier R2
-lab validate                                    # CONFORMANT
+sudo lab validate | grep 'E-002'               # E-002 fails; E-001 passes
+sudo lab reset --tier R2
+sudo lab validate                                # CONFORMANT
 ```
 
 **Proxy layer — F-007 (nginx wrong upstream)**
 
 ```bash
-lab fault apply F-007
+sudo lab fault apply F-007
 curl -s localhost/health                        # 502
 curl -s 127.0.0.1:8080/health                  # 200 — app alive, proxy broken
-lab validate | grep 'E-001'                    # E-series fails; P-002 passes
-lab reset --tier R2
-lab validate                                    # CONFORMANT
+sudo lab validate | grep 'E-001'               # E-series fails; P-002 passes
+sudo lab reset --tier R2
+sudo lab validate                                # CONFORMANT
 ```
 
 **Log layer — F-010 (log file deleted while running)**
 
 ```bash
-lab fault apply F-010
-lab validate                                    # exit 0 (degraded only)
+sudo lab fault apply F-010
+sudo lab validate                               # exit 0 (degraded only)
 ls /var/log/app/                               # empty — no app.log
 lsof +L1 | grep app.log                       # deleted fd held by process
-lab reset --tier R1
-lab validate                                    # CONFORMANT
+sudo lab reset --tier R1
+sudo lab validate                               # CONFORMANT
 ```
 
 **Service config layer — F-002 (wrong listen port)**
 
 ```bash
-lab fault apply F-002
+sudo lab fault apply F-002
 ss -ltnp | grep 9090                           # app on wrong port
 curl -s 127.0.0.1:9090/health                  # 200 direct
 curl -s localhost/health                        # 502 via nginx
-lab reset --tier R2
-lab validate                                    # CONFORMANT
+sudo lab reset --tier R2
+sudo lab validate                                # CONFORMANT
 ```
 
 ---
 
-### 1.3 Non-reversible fault cycle (F-008)
+### 1.3 Non-reversible fault cycle (F‑008)
+
+> **Current implementation note:** The `Apply` function for F‑008 returns an error immediately (`binary rebuild required — implement in deployment pipeline`). The fault is not applied. The steps below describe the intended behaviour once the binary rebuild is implemented. To test F‑008 fully now, rebuild the service binary with `FAULT_IGNORE_SIGTERM=true`, deploy it, and then run the verification.
 
 ```bash
-lab fault apply F-008 --yes
-lab validate                                    # exit 0 — silent fault
-sudo timeout 12 systemctl stop app.service \
-  || echo "TIMEOUT — SIGTERM ignored as expected"
-sudo systemctl start app.service
-lab reset --tier R3                             # full reprovision
-lab validate                                    # CONFORMANT
+# F-008 Apply returns error; manual rebuild required.
+# After rebuilding with the fault flag:
+#   sudo timeout 12 systemctl stop app.service || echo "TIMEOUT — SIGTERM ignored"
+#   sudo systemctl start app.service
+#   sudo lab reset --tier R3
+#   sudo lab validate
 ```
 
 ---
@@ -106,7 +109,7 @@ lab validate                                    # CONFORMANT
 ```bash
 cat /var/lib/lab/state.json | jq .            # valid JSON; no parse error
 cat /var/lib/lab/audit.log | tail -5          # recent entries; valid JSON lines
-lab history --last 10                          # shows recent transitions
+sudo lab history --last 10                     # shows recent transitions
 ```
 
 ---
@@ -129,28 +132,32 @@ curl -s  https://app.local/health             # SSL error (cert not trusted)
 
 Quick one-liner verification for each fault. Apply the fault, run the verification command, observe the expected output, then reset.
 
+> **F‑008 / F‑014 note:** Both non‑reversible faults return an error from `Apply` (“binary rebuild required”). The verification commands below only work after a manual binary rebuild with the appropriate ldflags. Until then, applying the fault leaves the environment CONFORMANT and the verification will show no abnormality.
+
 | Fault | Apply | Verification command | Expected output | Reset tier |
 |---|---|---|---|---|
-| F-001 | `lab fault apply F-001` | `journalctl -u app.service -n 3 --no-pager` | config-not-found in restart loop | R2 |
-| F-002 | `lab fault apply F-002` | `ss -ltnp \| grep 9090` | app listening on wrong port | R2 |
-| F-003 | `lab fault apply F-003` | `stat -c '%a' /etc/app/config.yaml` | `0` (mode 0000) | R2 |
-| F-004 | `lab fault apply F-004` | `curl -s localhost/ \| jq .status` | `"error"` | R2 |
-| F-005 | `lab fault apply F-005` | `stat -c '%a' /opt/app/server` | `640` | R2 |
-| F-006 | `lab fault apply F-006` | `systemctl show app --property=Environment` | no `APP_ENV` entry | R2 |
-| F-007 | `lab fault apply F-007` | `curl -so /dev/null -w '%{http_code}' localhost/health` | `502` | R2 |
-| F-008 | `lab fault apply F-008 --yes` | `lab validate; echo $?` | `0` — fault silent while running | R3 |
-| F-009 | `lab fault apply F-009` | `stat -c '%a' /var/log/app/app.log` | `0` (mode 0000) | R2 |
-| F-010 | `lab fault apply F-010` | `ls /var/log/app/ \| wc -l` | `0` — no app.log on disk | R1 |
-| F-013 | `lab fault apply F-013` | `systemctl is-active app` | `failed` | R2 |
-| F-014 | `lab fault apply F-014 --yes` | `for i in $(seq 1 10); do curl -s localhost/ > /dev/null; done; ps aux \| grep -c ' Z '` | non-zero zombie count | R3 |
-| F-015 | `lab fault apply F-015` | `sudo nginx -t 2>&1 \| grep emerg` | syntax error message | R2 |
-| F-016 | `lab fault apply F-016` | `ss -ltnp \| grep '0.0.0.0:8080'` | app bound to all interfaces | R2 |
-| F-017 | `lab fault apply F-017` | `curl -s localhost/ \| jq .env` | `""` (empty string) | R2 |
-| F-018 | `lab fault apply F-018` | `df -i /var/lib/app \| awk 'NR==2{print $5}'` | `100%` | R2 |
+| F-001 | `sudo lab fault apply F-001` | `journalctl -u app.service -n 3 --no-pager` | config-not-found in restart loop | R2 |
+| F-002 | `sudo lab fault apply F-002` | `ss -ltnp \| grep 9090` | app listening on wrong port | R2 |
+| F-003 | `sudo lab fault apply F-003` | `stat -c '%a' /etc/app/config.yaml` | `0` (mode 0000) | R2 |
+| F-004 | `sudo lab fault apply F-004` | `curl -s localhost/ \| jq .status` | `"error"` | R2 |
+| F-005 | `sudo lab fault apply F-005` | `sudo stat -c '%a' /opt/app/server` | `640` | R2 |
+| F-006 | `sudo lab fault apply F-006` | `systemctl show app --property=Environment` | no `APP_ENV` entry | R2 |
+| F-007 | `sudo lab fault apply F-007` | `curl -so /dev/null -w '%{http_code}' localhost/health` | `502` | R2 |
+| F-008¹ | `sudo lab fault apply F-008 --yes` | `sudo lab validate; echo $?` | `0` — Apply error; state unchanged | R3 |
+| F-009 | `sudo lab fault apply F-009` | `stat -c '%a' /var/log/app/app.log` | `0` (mode 0000) | R2 |
+| F-010 | `sudo lab fault apply F-010` | `ls /var/log/app/ \| wc -l` | `0` — no app.log on disk | R1 |
+| F-013 | `sudo lab fault apply F-013` | `systemctl is-active app` | `failed` | R2 |
+| F-014¹ | `sudo lab --yes fault apply F-014` | `sudo lab validate; echo $?` | `0` — Apply error; state unchanged | R3 |
+| F-015 | `sudo lab fault apply F-015` | `sudo nginx -t 2>&1 \| grep emerg` | syntax error message | R2 |
+| F-016 | `sudo lab fault apply F-016` | `ss -ltnp \| grep '0.0.0.0:8080'` | app bound to all interfaces | R2 |
+| F-017 | `sudo lab fault apply F-017` | `curl -s localhost/ \| jq .env` | `""` (empty string) | R2 |
+| F-018 | `sudo lab fault apply F-018` | `df -i /var/lib/app \| awk 'NR==2{print $5}'` | `100%` | R2 |
 
-**Reset command for all R2 faults:** `lab reset --tier R2`
-**Reset command for R1 fault (F-010):** `lab reset --tier R1`
-**Reset command for R3 faults (F-008, F-014):** `lab reset --tier R3`
+¹ *F‑008 / F‑014 Apply returns an error. The verification shown assumes the fault was manually activated via binary rebuild. Without rebuild, `sudo lab validate` exits 0 because no mutation occurred.*
+
+**Reset command for all R2 faults:** `sudo lab reset --tier R2`
+**Reset command for R1 fault (F‑010):** `sudo lab reset --tier R1`
+**Reset command for R3 faults (F‑008, F‑014):** `sudo lab reset --tier R3`
 
 ---
 
@@ -175,13 +182,13 @@ The environment is designed for learner-driven investigation. A learner with `su
 | Operation | Classification | Behavior | Recovery |
 |---|---|---|---|
 | `apt-get update` | **Resilient** | Package index update only; no service changes | None needed |
-| `apt-get upgrade` (nginx minor version) | **Recoverable** | nginx config syntax is stable across minor versions; site config unchanged; R2 reset restores if needed | `lab reset --tier R2` |
+| `apt-get upgrade` (nginx minor version) | **Recoverable** | nginx config syntax is stable across minor versions; site config unchanged; R2 reset restores if needed | `sudo lab reset --tier R2` |
 | `apt-get upgrade` (nginx major version) | **Unsupported** | nginx 1.x → nginx 1.x with breaking directive changes could invalidate F-005 check or the site config | Re-run bootstrap.sh |
 | `apt-get upgrade` (golang-go) | **Recoverable** | Go toolchain upgrade does not affect the installed binary; only matters on next binary rebuild (R3 reset) | Acceptable; R3 uses whatever `go` is installed |
 | `apt-get install <new-package>` | **Resilient** | Adds packages; does not touch lab paths | None needed |
 | `apt-get remove nginx` | **Breaks reset** | Removes nginx; R2 reset cannot restore service to running; re-run bootstrap | Re-run `bootstrap.sh` |
-| `apt-get remove golang-go` | **Breaks R3** | R3 reset calls `go build`; will fail without Go toolchain | `sudo apt-get install golang-go` then retry `lab reset --tier R3` |
-| `apt-get autoremove` | **Recoverable** | May remove unused packages; rarely touches lab dependencies | `lab validate` to check; re-run bootstrap if needed |
+| `apt-get remove golang-go` | **Breaks R3** | R3 reset calls `go build`; will fail without Go toolchain | `sudo apt-get install golang-go` then retry `sudo lab reset --tier R3` |
+| `apt-get autoremove` | **Recoverable** | May remove unused packages; rarely touches lab dependencies | `sudo lab validate` to check; re-run bootstrap if needed |
 
 **Note on nginx upgrades:** the lab config uses only stable nginx directives (`proxy_pass`, `proxy_set_header`, `add_header`, `ssl_certificate`, `proxy_read_timeout`). These have been stable across nginx 1.14–1.25. An upgrade within Ubuntu 22.04's package repository is safe. Replacing nginx with a different web server (e.g., caddy, apache) is unsupported.
 
@@ -192,11 +199,11 @@ The environment is designed for learner-driven investigation. A learner with `su
 | Operation | Classification | Behavior | Recovery |
 |---|---|---|---|
 | `sudo systemctl restart app.service` | **Resilient** | Restarts the service; conformance restored on next validate | None needed |
-| `sudo systemctl stop app.service` | **Recoverable** | Service stops; S-001 and E-series fail; `lab reset --tier R1` or manual restart | `lab reset --tier R1` |
-| `sudo systemctl disable app.service` | **Recoverable** | S-002 fails; service does not start on boot; R2 reset re-enables | `lab reset --tier R2` |
-| `sudo systemctl mask app.service` | **Breaks reset** | R1 and R2 resets cannot start a masked unit; must unmask first | `sudo systemctl unmask app.service` then `lab reset` |
+| `sudo systemctl stop app.service` | **Recoverable** | Service stops; S-001 and E-series fail; `sudo lab reset --tier R1` or manual restart | `sudo lab reset --tier R1` |
+| `sudo systemctl disable app.service` | **Recoverable** | S-002 fails; service does not start on boot; R2 reset re-enables | `sudo lab reset --tier R2` |
+| `sudo systemctl mask app.service` | **Breaks reset** | R1 and R2 resets cannot start a masked unit; must unmask first | `sudo systemctl unmask app.service` then `sudo lab reset` |
 | `sudo kill -9 $(pgrep server)` | **Resilient** | systemd restarts via `Restart=on-failure`; back up within 2s | None needed (auto-recovery) |
-| `sudo reboot` | **Recoverable** | All services auto-start; loopback mount auto-mounts via fstab; state.json persists | `lab status` after boot; likely CONFORMANT |
+| `sudo reboot` | **Recoverable** | All services auto-start; loopback mount auto-mounts via fstab; state.json persists | `sudo lab status` after boot; likely CONFORMANT |
 | `sudo poweroff` + cold start | **Recoverable** | Same as reboot | Same as reboot |
 | `sudo kill -9 1` (PID 1) | **Unsupported** | Kernel panic or hard reboot | Re-provision if filesystem corrupt |
 
@@ -206,17 +213,17 @@ The environment is designed for learner-driven investigation. A learner with `su
 
 | Operation | Classification | Behavior | Recovery |
 |---|---|---|---|
-| Edit `/etc/app/config.yaml` | **Recoverable** | Conforms until service restarts; restores with R2 | `lab reset --tier R2` |
-| Edit `/etc/systemd/system/app.service` | **Recoverable** | Takes effect on daemon-reload + restart; R2 reset restores | `lab reset --tier R2` |
-| Edit `/etc/nginx/sites-enabled/app` | **Recoverable** | Takes effect on nginx reload; R2 reset restores | `lab reset --tier R2` |
+| Edit `/etc/app/config.yaml` | **Recoverable** | Conforms until service restarts; restores with R2 | `sudo lab reset --tier R2` |
+| Edit `/etc/systemd/system/app.service` | **Recoverable** | Takes effect on daemon-reload + restart; R2 reset restores | `sudo lab reset --tier R2` |
+| Edit `/etc/nginx/sites-enabled/app` | **Recoverable** | Takes effect on nginx reload; R2 reset restores | `sudo lab reset --tier R2` |
 | Edit `/etc/nginx/nginx.conf` (global) | **Unsupported** | The global config is not managed by lab. If broken, nginx fails to start entirely. R2 reset only restores the site config, not the global config. | Manual restore from `/etc/nginx/nginx.conf.bak` or `apt-get reinstall nginx` |
-| `sudo rm /opt/app/server` | **Recoverable** | Service enters restart loop; R3 rebuilds binary | `lab reset --tier R3` |
+| `sudo rm /opt/app/server` | **Recoverable** | Service enters restart loop; R3 rebuilds binary | `sudo lab reset --tier R3` |
 | `sudo chmod 000 /var/lib/lab/` | **Breaks reset** | `lab` cannot read or write state.json; all commands fail | `sudo chmod 755 /var/lib/lab` |
-| `sudo rm /var/lib/lab/state.json` | **Recoverable** | Control plane starts fresh; detects CONFORMANT from runtime | `lab status` re-establishes state |
+| `sudo rm /var/lib/lab/state.json` | **Recoverable** | Control plane starts fresh; detects CONFORMANT from runtime | `sudo lab status` re-establishes state |
 | `sudo rm /var/lib/lab/audit.log` | **Recoverable** | Audit log gap; new entries append to recreated file | None needed |
 | Modify `/etc/hosts` (remove app.local) | **Recoverable** | F-007 check fails; R2 reset does NOT restore /etc/hosts (it is not embedded) | `echo '127.0.0.1  app.local' | sudo tee -a /etc/hosts` |
-| Delete TLS cert (`/etc/nginx/tls/app.local.crt`) | **Recoverable** | E-005 fails; R3 or manual cert regeneration restores | `lab reset --tier R3` or run step 10 of bootstrap manually |
-| `sudo umount /var/lib/app` | **Breaks reset** | R1/R2 resets write to the unmounted directory; files created there are lost; remount and re-run bootstrap | `sudo mount /var/lib/app` then `lab validate` |
+| Delete TLS cert (`/etc/nginx/tls/app.local.crt`) | **Recoverable** | E-005 fails; R3 or manual cert regeneration restores | `sudo lab reset --tier R3` or run step 10 of bootstrap manually |
+| `sudo umount /var/lib/app` | **Breaks reset** | R1/R2 resets write to the unmounted directory; files created there are lost; remount and re-run bootstrap | `sudo mount /var/lib/app` then `sudo lab validate` |
 
 ---
 
@@ -249,7 +256,7 @@ The environment is designed for learner-driven investigation. A learner with `su
 | Operation | Classification | Behavior | Recovery |
 |---|---|---|---|
 | `sudo timedatectl set-time` | **Resilient** | Timestamps in state.json and audit.log will be skewed but no conformance check verifies time correctness | None needed |
-| Time jump forward > 365 days | **Breaks TLS cert** | F-006 check fails: `openssl x509 -checkend 0` fails on expired cert; R3 reset regenerates cert | `lab reset --tier R3` |
+| Time jump forward > 365 days | **Breaks TLS cert** | F-006 check fails: `openssl x509 -checkend 0` fails on expired cert; R3 reset regenerates cert | `sudo lab reset --tier R3` |
 | `sudo systemctl stop systemd-timesyncd` | **Resilient** | NTP sync stops; timestamps drift; no conformance impact | None needed |
 
 ---
@@ -258,7 +265,7 @@ The environment is designed for learner-driven investigation. A learner with `su
 
 | Operation | Classification | Behavior | Recovery |
 |---|---|---|---|
-| `sudo systemctl edit app.slice` (change MemoryMax) | **Recoverable** | Affects F-008/F-014 behavior (OOM enforcement); R3 reset re-installs the slice unit | `lab reset --tier R3` |
+| `sudo systemctl edit app.slice` (change MemoryMax) | **Recoverable** | Affects F-008/F-014 behavior (OOM enforcement); R3 reset re-installs the slice unit | `sudo lab reset --tier R3` |
 | `sudo swapoff -a` | **Resilient** | Required for OOM enforcement; no conformance impact | None needed |
 | `sudo swapon -a` | **Breaks F-008/F-014** | Swap allows OOM to be avoided; `CHAOS_OOM_TRIGGER` will hang instead of killing the process | `sudo swapoff -a` |
 | `sudo cgroupfs-mount` / cgroup v1 changes | **Unsupported** | The environment requires cgroup v2 (`cgroup2fs`); switching to v1 breaks MemoryMax enforcement | Reinstall or reconfigure OS |
@@ -300,7 +307,7 @@ Specific scenarios that are not covered by the fault catalog but are known to pr
 
 **Scenario:** R3 reset is interrupted mid-build (e.g., SIGKILL during `go build`). The old binary at `/opt/app/server` survives (build writes to a temp path first) but service is restarted pointing at the pre-fault binary.
 
-**Effect:** `lab status` shows CONFORMANT. `lab validate` exits 0. The fault is no longer active. No action needed — the environment is in a safe state. The stale binary was the pre-fault binary, not the faulty one.
+**Effect:** `sudo lab status` shows CONFORMANT. `sudo lab validate` exits 0. The fault is no longer active. No action needed — the environment is in a safe state. The stale binary was the pre-fault binary, not the faulty one.
 
 **Detection:** not needed — the safe state is correct.
 
@@ -344,7 +351,7 @@ Specific scenarios that are not covered by the fault catalog but are known to pr
 
 **Scenario:** learner or other process creates `/var/lib/lab/state.json` with mode 0600 owned by root.
 
-**Effect:** `lab` binary runs as `devuser` and reads state.json as root via sudo. Actually — `lab` does not require sudo to read state.json (it's mode 0644 normally, readable by all). If mode is changed to 0600 owned by root, `lab status` returns an error reading state.json.
+**Effect:** `lab` binary runs as the invoking user and reads state.json. If mode is changed to 0600 owned by root, `lab status` returns an error reading state.json.
 
 **Detection:** `stat -c '%U:%G %a' /var/lib/lab/state.json` — should be `root:root 644`.
 
@@ -354,7 +361,7 @@ Specific scenarios that are not covered by the fault catalog but are known to pr
 
 ### 4.7 Concurrent `lab` commands without --force
 
-**Scenario:** learner runs `lab fault apply F-004 &` and then immediately `lab fault apply F-001` without `--force`.
+**Scenario:** learner runs `sudo lab fault apply F-004 &` and then immediately `sudo lab fault apply F-001` without `--force`.
 
 **Effect:** the second command is rejected with `ErrFaultAlreadyActive` or blocked on the mutex lock. No double-fault state is possible without `--force`. The lock ensures at most one mutating command runs at a time.
 
@@ -373,11 +380,11 @@ Specific scenarios that are not covered by the fault catalog but are known to pr
 **Verification after upgrade:**
 ```bash
 nginx -t                    # config still valid
-lab validate                # all checks still pass
+sudo lab validate           # all checks still pass
 time curl http://localhost/slow  # still 504 at ~3s (B-001 still works)
 ```
 
-**Recovery:** if anything breaks, `lab reset --tier R2` restores the site config; `sudo apt-get install --reinstall nginx` restores default nginx config files.
+**Recovery:** if anything breaks, `sudo lab reset --tier R2` restores the site config; `sudo apt-get install --reinstall nginx` restores default nginx config files.
 
 ---
 
@@ -414,7 +421,7 @@ check "X-Proxy: nginx header"    bash -c "curl -sI localhost/ | grep -q 'X-Proxy
 check "HTTPS app.local → 200"   curl -skf https://app.local/health
 
 echo "=== Filesystem ==="
-check "binary mode 750"          bash -c "stat -c '%a' /opt/app/server | grep -q 750"
+check "binary mode 750"          sudo bash -c "stat -c '%a' /opt/app/server | grep -q 750"
 check "config exists mode 640"   bash -c "stat -c '%a' /etc/app/config.yaml | grep -q 640"
 check "log dir mode 755"         bash -c "stat -c '%a' /var/log/app | grep -q 755"
 check "state dir mode 755"       bash -c "stat -c '%a' /var/lib/app | grep -q 755"
@@ -426,7 +433,7 @@ check "state is CONFORMANT"      bash -c "jq -e '.state==\"CONFORMANT\"' /var/li
 check "no active fault"          bash -c "jq -e '.active_fault==null' /var/lib/lab/state.json"
 check "loopback mounted"         mountpoint -q /var/lib/app
 check "app.local in /etc/hosts"  grep -q app.local /etc/hosts
-check "lab validate exits 0"     lab validate
+check "lab validate exits 0"     sudo lab validate
 
 echo ""
 [[ $FAIL -eq 0 ]] && echo "PASS — environment is conformant" || echo "FAIL — $FAIL check(s) failed"
@@ -441,11 +448,11 @@ Run before handing the VM to a learner. Takes ~2 minutes.
 
 ```bash
 # 1. Verify CONFORMANT
-lab validate || { echo "Not conformant — run lab reset --tier R2"; exit 1; }
+sudo lab validate || { echo "Not conformant — run sudo lab reset --tier R2"; exit 1; }
 
 # 2. No active fault
-lab status --json | jq -e '.active_fault == null' \
-  || { echo "Fault still active — run lab reset"; exit 1; }
+sudo lab status --json | jq -e '.active_fault == null' \
+  || { echo "Fault still active — run sudo lab reset"; exit 1; }
 
 # 3. Audit log clear (optional — create a clean start marker)
 echo "--- session start $(date -u +%Y-%m-%dT%H:%M:%SZ) ---" \
