@@ -98,10 +98,10 @@ func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("GET /", s.handleRoot)
 	mux.HandleFunc("GET /slow", s.handleSlow)
 	mux.HandleFunc("GET /headers", s.handleHeaders)
 	mux.HandleFunc("GET /reset", s.handleReset)
+	mux.HandleFunc("GET /", s.handleRoot)        // must be last
 
 	s.http = &http.Server{
 		Addr:    addr,
