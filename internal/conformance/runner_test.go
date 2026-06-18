@@ -122,7 +122,7 @@ func (m *mockObserver) RunCommand(cmd string, args ...string) (string, error) {
 	return "", nil
 }
 
-// conformantMock returns a mock observer set up to pass all 23 checks.
+// conformantMock returns a mock observer set up to pass all 25 checks.
 func conformantMock() *mockObserver {
 	m := newMock()
 
@@ -313,18 +313,18 @@ func TestRunner_DependentMarking(t *testing.T) {
 }
 
 func TestRunner_AllChecksRunEvenOnFailure(t *testing.T) {
-	// All 23 checks must run even when early checks fail.
+	// All 25 checks must run even when early checks fail.
 	// conformance-model.md §4.2: no early abort.
 	runner := NewRunner()
 	m := newMock() // all failing
 
 	sr := runner.Run(m)
 
-	if sr.Total != 23 {
-		t.Errorf("Total = %d, want 23", sr.Total)
+	if sr.Total != 25 {
+		t.Errorf("Total = %d, want 25", sr.Total)
 	}
-	if len(sr.Results) != 23 {
-		t.Errorf("len(Results) = %d, want 23", len(sr.Results))
+	if len(sr.Results) != 25 {
+		t.Errorf("len(Results) = %d, want 25", len(sr.Results))
 	}
 }
 
@@ -380,10 +380,10 @@ func TestRunner_RunIDs(t *testing.T) {
 
 // ── Catalog completeness ──────────────────────────────────────────────────────
 
-func TestCatalog_Has23Checks(t *testing.T) {
+func TestCatalog_Has25Checks(t *testing.T) {
 	checks := Catalog()
-	if len(checks) != 23 {
-		t.Errorf("Catalog has %d checks, want 23", len(checks))
+	if len(checks) != 25 {
+		t.Errorf("Catalog has %d checks, want 25", len(checks))
 	}
 }
 

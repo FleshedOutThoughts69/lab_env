@@ -199,11 +199,11 @@ func TestInvariant_19FaultsInCatalog(t *testing.T) {
 	}
 }
 
-// TestInvariant_23ChecksInConformanceCatalog enforces the check count from
+// TestInvariant_25ChecksInConformanceCatalog enforces the check count from
 // conformance-model.md §3.
-func TestInvariant_23ChecksInConformanceCatalog(t *testing.T) {
-	if got := len(conformance.Catalog()); got != 23 {
-		t.Errorf("conformance catalog has %d checks, want 23 (conformance-model §3)", got)
+func TestInvariant_25ChecksInConformanceCatalog(t *testing.T) {
+	if got := len(conformance.Catalog()); got != 25 {
+		t.Errorf("conformance catalog has %d checks, want 25 (conformance-model §3)", got)
 	}
 }
 

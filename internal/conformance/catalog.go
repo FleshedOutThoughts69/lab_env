@@ -466,6 +466,46 @@ func Catalog() []*Check {
 				return nil
 			},
 		},
+
+		// ── H-series: Additional Endpoint Checks ──────────────────────────
+		{
+			ID:                "H-001",
+			Category:          CategoryEndpoint,
+			Layer:             LayerBehavioral,
+			Severity:          SeverityBlocking,
+			Assertion:         "/headers returns proxy headers",
+			FailureMeaning:    "Proxy headers not propagated; nginx may be bypassed",
+			ObservableCommand: `curl -s http://localhost/headers`,
+			Execute: func(o Observer) error {
+				ep, err := o.CheckEndpoint("http://localhost/headers", false)
+				if err != nil {
+					return fmt.Errorf("reaching /headers: %w", err)
+				}
+				if ep.StatusCode != 200 {
+					return fmt.Errorf("/headers returned %d, want 200", ep.StatusCode)
+				}
+				if !strings.Contains(string(ep.Body), `"Host"`) {
+					return fmt.Errorf("/headers body missing Host field")
+				}
+				return nil
+			},
+		},
+		{
+			ID:                "H-002",
+			Category:          CategoryEndpoint,
+			Layer:             LayerBehavioral,
+			Severity:          SeverityBlocking,
+			Assertion:         "/reset causes TCP connection reset",
+			FailureMeaning:    "TCP RST not sent; SO_LINGER may not be configured",
+			ObservableCommand: `curl -s http://localhost/reset; test $? -eq 56`,
+			Execute: func(o Observer) error {
+				_, err := o.CheckEndpoint("http://localhost/reset", false)
+				if err == nil {
+					return fmt.Errorf("/reset did not reset connection; expected error")
+				}
+				return nil
+			},
+		},
 	}
 }
 
