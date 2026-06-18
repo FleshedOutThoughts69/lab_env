@@ -41,15 +41,15 @@ func Catalog() []*Check {
 			FailureMeaning:    "App process is not running",
 			ObservableCommand: "systemctl is-active app.service --quiet",
 			Execute: func(o Observer) error {
-				active, err := o.ServiceActive(cfg.AppServiceName)
+				ep, err := o.CheckEndpoint("http://localhost/reset", false)
 				if err != nil {
-					return fmt.Errorf("checking app.service state: %w", err)
+					return fmt.Errorf("reaching /reset: %w", err)
 				}
-				if !active {
-					return fmt.Errorf("app.service is not active")
+				if ep.StatusCode == 200 {
+					return fmt.Errorf("/reset returned %d, want non-200 (connection reset expected)", ep.StatusCode)
 				}
 				return nil
-			},
+	},
 		},
 		{
 			ID:                "S-002",
