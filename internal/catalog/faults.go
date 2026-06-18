@@ -118,13 +118,13 @@ func faultF002() *FaultImpl {
 			if err := exec.WriteFile(cfg.ConfigPath, modified, cfg.ModeConfig, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
 				return fmt.Errorf("writing config: %w", err)
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 		Recover: func(exec executor.Executor) error {
 			if err := exec.RestoreFile(cfg.ConfigPath); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -161,7 +161,7 @@ func faultF003() *FaultImpl {
 			if err := exec.Systemctl("reset-failed", "app"); err != nil {
 				// reset-failed returns non-zero if the service wasn't in failed state — ignore
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -226,7 +226,7 @@ func faultF005() *FaultImpl {
 			if err := exec.Chmod(cfg.BinaryPath, cfg.ModeBinary); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -265,7 +265,7 @@ func faultF006() *FaultImpl {
 			if err := exec.Systemctl("daemon-reload", ""); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 		Recover: func(exec executor.Executor) error {
 			if err := exec.RestoreFile(cfg.UnitFilePath); err != nil {
@@ -274,7 +274,7 @@ func faultF006() *FaultImpl {
 			if err := exec.Systemctl("daemon-reload", ""); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -384,7 +384,7 @@ func faultF009() *FaultImpl {
 			if err := exec.Chown(cfg.LogPath, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -415,7 +415,7 @@ func faultF010() *FaultImpl {
 			return exec.Remove(cfg.LogPath)
 		},
 		Recover: func(exec executor.Executor) error {
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -570,13 +570,13 @@ func faultF016() *FaultImpl {
 			if err := exec.WriteFile(cfg.ConfigPath, modified, cfg.ModeConfig, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 		Recover: func(exec executor.Executor) error {
 			if err := exec.RestoreFile(cfg.ConfigPath); err != nil {
 				return err
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -607,13 +607,13 @@ func faultF017() *FaultImpl {
 			if err := exec.RunMutation("systemctl", "set-environment", "APP_ENV="); err != nil {
 				return fmt.Errorf("setting empty APP_ENV: %w", err)
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 		Recover: func(exec executor.Executor) error {
 			if err := exec.RunMutation("systemctl", "unset-environment", "APP_ENV"); err != nil {
 				return fmt.Errorf("unsetting APP_ENV: %w", err)
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
@@ -681,13 +681,13 @@ func faultF020() *FaultImpl {
 			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte("CHAOS_LATENCY_MS=400\n"), 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
 				return fmt.Errorf("writing chaos.env: %w", err)
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 		Recover: func(exec executor.Executor) error {
 			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte{}, 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
 				return fmt.Errorf("clearing chaos.env: %w", err)
 			}
-			return exec.Systemctl("restart", "app")
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }
