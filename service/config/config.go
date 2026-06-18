@@ -121,7 +121,7 @@ func Load(path string) (*Config, error) {
 	// The value is embedded in JSON response bodies and log lines.
 	// A malformed value (e.g., "prod\nmalicious") would break line-oriented
 	// log parsers and conformance check L-002 (last line valid JSON).
-	cfg.AppEnv = sanitizeEnvString(cfg.AppEnv)
+	cfg.AppEnv = SanitizeEnvString(cfg.AppEnv)
 
 	// Load chaos variables from environment.
 	// These are injected by systemd via EnvironmentFile=/etc/app/chaos.env.
@@ -170,7 +170,7 @@ func parseBool(s string) bool {
 	return false
 }
 
-// sanitizeEnvString strips ASCII control characters (0x00-0x1F, 0x7F) from s.
+// SanitizeEnvString strips ASCII control characters (0x00-0x1F, 0x7F) from s.
 // Applied to app_env which is embedded in JSON response bodies and log lines.
 // Newlines in app_env would break L-002 (last log line must be valid JSON).
 // Only printable ASCII is permitted; non-ASCII Unicode is passed through.
