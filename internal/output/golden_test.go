@@ -370,9 +370,9 @@ func TestGolden_FaultInfoResult_NoExtraFields(t *testing.T) {
 	defined := map[string]bool{
 		"id": true, "layer": true, "domain": true, "reset_tier": true,
 		"requires_confirmation": true, "is_reversible": true,
-		"mutation_display": true, "symptom": true,
+		"mutation": true, "symptom": true,
 		"authoritative_signal": true, "observable": true, "reset_action": true,
-	}
+}
 	for field := range m {
 		if !defined[field] {
 			t.Errorf("FaultInfoResult JSON contains unexpected field %q — schema drift", field)
