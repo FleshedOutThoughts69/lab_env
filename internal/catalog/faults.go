@@ -715,7 +715,7 @@ func faultF021() *FaultImpl {
 			ResetAction:         "nft flush chain inet lab_filter LAB-FAULT",
 		},
 		Apply: func(exec executor.Executor) error {
-			return exec.RunMutation("nft", "add", "rule", "inet", "lab_filter", "LAB-FAULT", "tcp", "dport", "8080", "drop")
+			return exec.RunMutation("nft", "add", "rule", "inet", "lab_filter", "LAB-FAULT", "iif", "enp0s8", "tcp", "dport", "8080", "drop")
 		},
 		Recover: func(exec executor.Executor) error {
 			return exec.RunMutation("nft", "flush", "chain", "inet", "lab_filter", "LAB-FAULT")
