@@ -15,17 +15,15 @@ import (
 
 // ── Catalog completeness ──────────────────────────────────────────────────────
 
-func TestAllImpls_Has16Faults(t *testing.T) {
-	faults := AllImpls()
-	if len(faults) != 16 {
-		t.Errorf("AllImpls() has %d faults, want 16", len(faults))
+func TestAllImpls_Has19Faults(t *testing.T) {
+	if len(catalog.AllImpls()) != 19 {
+		t.Errorf("AllImpls() = %d, want 19", len(catalog.AllImpls()))
 	}
 }
 
-func TestAllDefs_Has16Defs(t *testing.T) {
-	defs := AllDefs()
-	if len(defs) != 16 {
-		t.Errorf("AllDefs() has %d defs, want 16", len(defs))
+func TestAllDefs_Has19Defs(t *testing.T) {
+	if len(catalog.AllDefs()) != 19 {
+		t.Errorf("AllDefs() = %d, want 19", len(catalog.AllDefs()))
 	}
 }
 
@@ -48,6 +46,7 @@ func TestFaultIDs_SequentialWithGap(t *testing.T) {
 		"F-001", "F-002", "F-003", "F-004", "F-005", "F-006",
 		"F-007", "F-008", "F-009", "F-010",
 		"F-013", "F-014", "F-015", "F-016", "F-017", "F-018",
+		"F-019", "F-020", "F-021",
 	}
 	if len(faults) != len(expected) {
 		t.Fatalf("AllImpls() has %d faults, want %d", len(faults), len(expected))

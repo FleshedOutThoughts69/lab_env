@@ -190,12 +190,12 @@ func TestInvariant_Conformant_ForbidsActiveFault(t *testing.T) {
 
 // ── fault-model.md × catalog count ───────────────────────────────────────────
 
-// TestInvariant_16FaultsInCatalog enforces the catalog count from
+// TestInvariant_19FaultsInCatalog enforces the catalog count from
 // fault-model.md §7.2. F-011 and F-012 are baseline network behaviours
 // (fault-model.md §10) and are not in the fault catalog.
-func TestInvariant_16FaultsInCatalog(t *testing.T) {
-	if got := len(catalog.AllDefs()); got != 16 {
-		t.Errorf("fault catalog has %d faults, want 16 (fault-model §7.2)", got)
+func TestInvariant_19FaultsInCatalog(t *testing.T) {
+	if len(catalog.AllImpls()) != 19 {
+		t.Errorf("catalog has %d faults, want 19", len(catalog.AllImpls()))
 	}
 }
 
