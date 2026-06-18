@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"time"
-
+	"os"
 	"lab_env/internal/catalog"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
