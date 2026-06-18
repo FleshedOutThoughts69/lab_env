@@ -116,14 +116,22 @@ func (r *Runner) LightweightRun(o Observer) *SuiteResult {
 func (r *Runner) runOne(check *Check, o Observer, s001Passed bool) CheckResult {
 	res := CheckResult{Check: check}
 
-	// Mark E-series checks as dependent when S-001 failed.
-	// They still run (per conformance-model §4.2) but their failure
-	// is noted as a consequence, not independent signal.
 	if check.Category == CategoryEndpoint && !s001Passed {
 		res.Dependent = true
 	}
 
-	err := check.Execute(o)
+	// Execute with panic recovery so a single panicking check
+	// does not halt the entire suite.
+	var err error
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				err = fmt.Errorf("check panicked: %v", rec)
+			}
+		}()
+		err = check.Execute(o)
+	}()
+
 	if err != nil {
 		res.Passed = false
 		res.Err = err

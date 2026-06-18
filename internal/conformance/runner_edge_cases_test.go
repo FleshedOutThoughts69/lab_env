@@ -34,67 +34,65 @@ var _ = fs.FileMode(0)
 
 // TestRunner_PanickingCheck_DoesNotHaltSuite verifies that a panicking check is caught.
 func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
-	t.Skip("Runner doesn’t recover panics yet.")
-
-	// panicCheck := conformance.Check{
-	// 	ID:                "X-001",
-	// 	Severity:          conformance.SeverityBlocking,
-	// 	Layer:             conformance.LayerBehavioral,
-	// 	Category:          conformance.CategorySystemState, // placeholder, was CategoryE
-	// 	Assertion:         "synthetic panicking check",
-	// 	ObservableCommand: "false",
-	// 	Execute: func(obs conformance.Observer) error {
-	// 		panic("simulated check panic")
-	// 	},
-	// }
-
-	// passingCheck := conformance.Check{
-	// 	ID:                "X-002",
-	// 	Severity:          conformance.SeverityBlocking,
-	// 	Layer:             conformance.LayerBehavioral,
-	// 	Category:          conformance.CategorySystemState,
-	// 	Assertion:         "synthetic passing check",
-	// 	ObservableCommand: "true",
-	// 	Execute: func(obs conformance.Observer) error {
-	// 		return nil
-	// 	},
+	panicCheck := conformance.Check{
+		ID:                "X-001",
+		Severity:          conformance.SeverityBlocking,
+		Layer:             conformance.LayerBehavioral,
+		Category:          conformance.CategorySystemState, // placeholder, was CategoryE
+		Assertion:         "synthetic panicking check",
+		ObservableCommand: "false",
+		Execute: func(obs conformance.Observer) error {
+			panic("simulated check panic")
+		},
 	}
 
-	// runner := conformance.NewRunnerWith([]*conformance.Check{&panicCheck, &passingCheck})
-	// result := runner.Run(&emptyObserver{})
+	passingCheck := conformance.Check{
+		ID:                "X-002",
+		Severity:          conformance.SeverityBlocking,
+		Layer:             conformance.LayerBehavioral,
+		Category:          conformance.CategorySystemState,
+		Assertion:         "synthetic passing check",
+		ObservableCommand: "true",
+		Execute: func(obs conformance.Observer) error {
+			return nil
+		},
+	}
 
-	// if len(result.Results) != 2 {
-	// 	t.Errorf("expected 2 results, got %d", len(result.Results))
-	// }
+	runner := conformance.NewRunnerWith([]*conformance.Check{&panicCheck, &passingCheck})
+	result := runner.Run(&emptyObserver{})
 
-	// var panicResult *conformance.CheckResult
-	// var passResult *conformance.CheckResult
-	// for i := range result.Results {
-	// 	switch result.Results[i].Check.ID {
-	// 		case "X-001":
-	// 			r := result.Results[i]
-	// 			panicResult = &r
-	// 		case "X-002":
-	// 			r := result.Results[i]
-	// 			passResult = &r
-	// 	}
-	// }
+	if len(result.Results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(result.Results))
+	}
 
-	// if panicResult == nil {
-	// 	t.Fatal("no result for panicking check X-001")
-	// }
-	// if panicResult.Passed {
-	// 	t.Error("panicking check X-001: Passed=true; expected Passed=false")
-	// }
-	// if panicResult.Err == nil {
-	// 	t.Error("panicking check X-001: Err=nil; expected non-nil error describing the panic")
-	// }
-	// if passResult == nil {
-	// 	t.Fatal("no result for passing check X-002")
-	// }
-	// if !passResult.Passed {
-	// 	t.Error("passing check X-002: Passed=false; panic in X-001 should not affect X-002")
-	// }
+	var panicResult *conformance.CheckResult
+	var passResult *conformance.CheckResult
+	for i := range result.Results {
+		switch result.Results[i].Check.ID {
+			case "X-001":
+				r := result.Results[i]
+				panicResult = &r
+			case "X-002":
+				r := result.Results[i]
+				passResult = &r
+		}
+	}
+
+	if panicResult == nil {
+		t.Fatal("no result for panicking check X-001")
+	}
+	if panicResult.Passed {
+		t.Error("panicking check X-001: Passed=true; expected Passed=false")
+	}
+	if panicResult.Err == nil {
+		t.Error("panicking check X-001: Err=nil; expected non-nil error describing the panic")
+	}
+	if passResult == nil {
+		t.Fatal("no result for passing check X-002")
+	}
+	if !passResult.Passed {
+		t.Error("passing check X-002: Passed=false; panic in X-001 should not affect X-002")
+	}
 
 
 // TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries verifies
