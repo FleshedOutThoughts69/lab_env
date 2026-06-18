@@ -100,6 +100,7 @@ func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /", s.handleRoot)
 	mux.HandleFunc("GET /slow", s.handleSlow)
+	mux.HandleFunc("GET /headers", s.handleHeaders)
 
 	s.http = &http.Server{
 		Addr:    addr,
@@ -192,6 +193,22 @@ func (s *Server) handleSlow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","path":"/slow","delay_seconds":%d}`, SlowHandlerDelay/time.Second)
+}
+
+// handleHeaders handles GET /headers.
+// Echoes proxy headers to demonstrate nginx header propagation.
+func (s *Server) handleHeaders(w http.ResponseWriter, r *http.Request) {
+	s.metrics.RequestsTotal.Add(1)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	fmt.Fprintf(w, `{"Host":"%s","X-Forwarded-For":"%s","X-Forwarded-Proto":"%s","X-Real-IP":"%s","User-Agent":"%s"}`,
+		r.Header.Get("Host"),
+		r.Header.Get("X-Forwarded-For"),
+		r.Header.Get("X-Forwarded-Proto"),
+		r.Header.Get("X-Real-IP"),
+		r.Header.Get("User-Agent"),
+	)
 }
 
 // touchStatePath updates the mtime of the state touch target, creating it if absent.
