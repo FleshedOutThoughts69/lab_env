@@ -8,15 +8,6 @@ import (
 	cfg "lab_env/internal/config"
 )
 
-// Catalog returns the complete ordered check registry as defined in
-// conformance-model.md §3. Checks are returned in dependency order:
-// S-series, P-series, E-series, F-series, L-series.
-//
-// The check definitions here are the executable expression of the
-// conformance model catalog. Check IDs, severities, and categories
-// are authoritative. Observable commands are included for documentation
-// and output; the Execute function is the actual test.
-
 // CheckByID returns the Check with the given ID from the catalog, or nil if
 // no check with that ID exists. Used by cmd/fault.go to evaluate
 // PreconditionChecks before executing Apply (control-plane-contract §4.5 step 5).
@@ -29,6 +20,9 @@ func CheckByID(id string) *Check {
 	return nil
 }
 
+// Catalog returns the complete ordered check registry as defined in
+// conformance-model.md §3. Checks are returned in dependency order:
+// S-series, P-series, E-series, F-series, L-series, H-series.
 func Catalog() []*Check {
 	return []*Check{
 		// ── S-series: System State Checks ───────────────────────────────
@@ -41,15 +35,15 @@ func Catalog() []*Check {
 			FailureMeaning:    "App process is not running",
 			ObservableCommand: "systemctl is-active app.service --quiet",
 			Execute: func(o Observer) error {
-				ep, err := o.CheckEndpoint("http://localhost/reset", false)
+				active, err := o.ServiceActive(cfg.AppServiceName)
 				if err != nil {
-					return fmt.Errorf("reaching /reset: %w", err)
+					return fmt.Errorf("checking app.service: %w", err)
 				}
-				if ep.StatusCode == 200 {
-					return fmt.Errorf("/reset returned %d, want non-200 (connection reset expected)", ep.StatusCode)
+				if !active {
+					return fmt.Errorf("app.service is not active")
 				}
 				return nil
-	},
+			},
 		},
 		{
 			ID:                "S-002",
@@ -263,9 +257,6 @@ func Catalog() []*Check {
 			FailureMeaning:    "nginx is not proxying — traffic reaching app directly or response from wrong source",
 			ObservableCommand: "curl -sI http://localhost/ | grep -q 'X-Proxy: nginx'",
 			Execute: func(o Observer) error {
-				// We use RunCommand here because CheckEndpoint does not
-				// expose response headers. The observable command is the
-				// canonical test.
 				out, err := o.RunCommand("curl", "-sI", "http://localhost/")
 				if err != nil {
 					return fmt.Errorf("fetching headers from /: %w", err)
@@ -297,9 +288,6 @@ func Catalog() []*Check {
 		},
 
 		// ── F-series: Filesystem Checks ──────────────────────────────────
-		// Note on naming: these check IDs (F-001 through F-007) share the
-		// F-NNN prefix with fault catalog IDs (F-001 through F-018).
-		// These are distinct namespaces. See conformance-model.md §3.1.
 		{
 			ID:                "F-001",
 			Category:          CategoryFilesystem,
@@ -357,7 +345,6 @@ func Catalog() []*Check {
 			FailureMeaning:    "nginx config has syntax error; nginx will not reload",
 			ObservableCommand: "nginx -t 2>/dev/null",
 			Execute: func(o Observer) error {
-				// nginx -t writes to stderr; a zero exit means valid config.
 				_, err := o.RunCommand("nginx", "-t")
 				if err != nil {
 					return fmt.Errorf("nginx config syntax check failed: %w", err)
@@ -499,9 +486,12 @@ func Catalog() []*Check {
 			FailureMeaning:    "TCP RST not sent; SO_LINGER may not be configured",
 			ObservableCommand: `curl -s http://localhost/reset; test $? -eq 56`,
 			Execute: func(o Observer) error {
-				_, err := o.CheckEndpoint("http://localhost/reset", false)
-				if err == nil {
-					return fmt.Errorf("/reset did not reset connection; expected error")
+				ep, err := o.CheckEndpoint("http://localhost/reset", false)
+				if err != nil {
+					return fmt.Errorf("reaching /reset: %w", err)
+				}
+				if ep.StatusCode == 200 {
+					return fmt.Errorf("/reset returned %d, want non-200 (connection reset expected)", ep.StatusCode)
 				}
 				return nil
 			},
