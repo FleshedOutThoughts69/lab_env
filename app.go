@@ -5,10 +5,12 @@ package main
 
 import (
 	"os"
-    "os/signal"
-    "syscall"
+	"os/signal"
+	"syscall"
 	"fmt"
 	"io"
+	"time"
+
 	"lab_env/cmd"
 	"lab_env/internal/conformance"
 	"lab_env/internal/executor"
@@ -63,12 +65,18 @@ func (a *App) Run(args []string) int {
 
 	// ---------------------------------------------------------------
 	// Interrupt handler: on SIGINT/SIGTERM, invalidate classification
-	// and exit 4. This implements control-plane-contract §3.6.
+	// and exit 4. A 30-second grace period allows the current executor
+	// operation to finish normally before the process exits.
+	// This implements control-plane-contract §3.6.
 	// ---------------------------------------------------------------
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		// Allow the current executor operation up to 30s to finish.
+		select {
+		case <-time.After(30 * time.Second):
+		}
 		// Best-effort: write classification_valid=false and audit entry.
 		store.InvalidateClassification() //nolint:errcheck
 		if audit != nil {
