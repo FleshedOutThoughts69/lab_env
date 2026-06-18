@@ -191,7 +191,7 @@ func (s *Server) handleSlow(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(SlowHandlerDelay)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, `{"status":"ok"}`)
+	fmt.Fprintf(w, `{"status":"ok","path":"/slow","delay_seconds":%d}`, SlowHandlerDelay/time.Second)
 }
 
 // touchStatePath updates the mtime of the state touch target, creating it if absent.
