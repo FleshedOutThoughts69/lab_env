@@ -23,10 +23,37 @@ import (
 // analogous to the latency exemption. Verify the implementation matches.
 // If drops should apply to /health, this test documents the decision.
 func TestChaosHandler_Drop100_HealthIsExempted(t *testing.T) {
-	This test is left as a skip to document the open design question.
-	The current implementation drops ALL routes including /health for drop percent.
-	The latency exemption was explicit (go ServeHTTP comment).
-	If /health should also be exempt from drops, uncomment and implement.
+	base := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	// 100% drop rate — /health should survive, all other routes should drop.
+	handler := New(base, 0, 100, nil, nil, nil)
+
+	t.Run("health survives 100% drop", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("GET /health at 100%% drop: status %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("other routes drop at 100%", func(t *testing.T) {
+		for _, path := range []string{"/", "/slow", "/api/anything"} {
+			t.Run(path, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, req)
+
+				if w.Code != http.StatusServiceUnavailable {
+					t.Errorf("GET %s at 100%% drop: status %d, want 503", path, w.Code)
+				}
+			})
+		}
+	})
 }
 
 // TestChaosHandler_Drop100_AllNonHealthRoutesDrop verifies that at 100% drop
