@@ -106,21 +106,20 @@ func TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries(t *testing.T
 	for _, check := range checks {
 		c := *check
 		t.Run(c.ID, func(t *testing.T) {
+			catStr := c.Category.String()
 			switch c.Severity {
 			case conformance.SeverityBlocking:
-				// All blocking checks must have a valid category. Currently the
-				// only exported category is CategorySystemState, which all
-				// blocking checks use.
-				if c.Category != conformance.CategorySystemState {
-					t.Errorf("%s is blocking but category=%v; expected CategorySystemState",
-						c.ID, c.Category)
+				// Blocking checks must be in S, P, E, or F series (excluding F-006).
+				if catStr != "S" && catStr != "P" && catStr != "E" && catStr != "F" {
+					t.Errorf("%s is blocking but category=%s; expected S, P, E, or F",
+						c.ID, catStr)
 				}
 
 			case conformance.SeverityDegraded:
 				// Degraded checks are F-006 and the L-series.
-				if c.ID != "F-006" && !strings.HasPrefix(c.ID, "L-") {
-					t.Errorf("%s is degraded but not F-006 or L-series; expected degraded severity only for those checks",
-						c.ID)
+				if c.ID != "F-006" && catStr != "L" {
+					t.Errorf("%s is degraded but category=%s; expected F-006 or L-series",
+						c.ID, catStr)
 				}
 			}
 		})
