@@ -98,37 +98,33 @@ func TestRunner_PanickingCheck_DoesNotHaltSuite(t *testing.T) {
 	// }
 
 
-// TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries verifies category mapping.
+// TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries verifies
+// that severity assignments are correct across the catalog.
 func TestCatalog_SeverityInvariant_BlockingChecksAreInCorrectSeries(t *testing.T) {
-	t.Skip("category constants S/P/E/L have been removed; rule needs revisiting")
-	// checks := conformance.Catalog()
+	checks := conformance.Catalog()
 
-	// for _, check := range checks {
-	// 	c := *check
-	// 	t.Run(c.ID, func(t *testing.T) {
-	// 		switch c.Severity {
-	// 		case conformance.SeverityBlocking:
-	// 			// Blocking checks must be S, P, E, or specific F faults.
-	// 			// Since CategoryE may no longer exist, we use CategorySystemState as placeholder.
-	// 			if c.Category != conformance.CategoryS &&
-	// 				c.Category != conformance.CategoryP &&
-	// 				c.Category != conformance.CategorySystemState && // was CategoryE
-	// 				c.ID != "F-001" && c.ID != "F-002" &&
-	// 				c.ID != "F-003" && c.ID != "F-004" &&
-	// 				c.ID != "F-005" && c.ID != "F-007" {
-	// 				t.Errorf("%s is blocking but category=%v; expected S/P/E or specific F faults",
-	// 					c.ID, c.Category)
-	// 			}
+	for _, check := range checks {
+		c := *check
+		t.Run(c.ID, func(t *testing.T) {
+			switch c.Severity {
+			case conformance.SeverityBlocking:
+				// All blocking checks must have a valid category. Currently the
+				// only exported category is CategorySystemState, which all
+				// blocking checks use.
+				if c.Category != conformance.CategorySystemState {
+					t.Errorf("%s is blocking but category=%v; expected CategorySystemState",
+						c.ID, c.Category)
+				}
 
-	// 		case conformance.SeverityDegraded:
-	// 			// Degraded checks must be F-006 or L series
-	// 			if c.ID != "F-006" && c.Category != conformance.CategoryL {
-	// 				t.Errorf("%s is degraded but category=%v; expected F-006 or L series",
-	// 					c.ID, c.Category)
-	// 			}
-	// 		}
-	// 	})
-	// }
+			case conformance.SeverityDegraded:
+				// Degraded checks are F-006 and the L-series.
+				if c.ID != "F-006" && !strings.HasPrefix(c.ID, "L-") {
+					t.Errorf("%s is degraded but not F-006 or L-series; expected degraded severity only for those checks",
+						c.ID)
+				}
+			}
+		})
+	}
 }
 
 // TestCatalog_AllChecks_HandleMissingFilesGracefully tests that checks don't panic with empty ob
