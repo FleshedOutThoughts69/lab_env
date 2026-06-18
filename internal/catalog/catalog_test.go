@@ -46,7 +46,7 @@ func TestFaultIDs_SequentialWithGap(t *testing.T) {
 		"F-001", "F-002", "F-003", "F-004", "F-005", "F-006",
 		"F-007", "F-008", "F-009", "F-010",
 		"F-013", "F-014", "F-015", "F-016", "F-017", "F-018",
-		"F-019", "F-020", "F-021",
+		"F-020", "F-021", "F-019",
 	}
 	if len(faults) != len(expected) {
 		t.Fatalf("AllImpls() has %d faults, want %d", len(faults), len(expected))
