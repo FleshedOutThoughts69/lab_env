@@ -154,6 +154,9 @@ func (a *App) dispatchFault(args []string, obs conformance.Observer, runner *con
 			return output.CommandResult{ExitCode: 2, Err: fmt.Errorf("usage: lab fault apply <ID> [--force] [--yes]")}
 		}
 		faultID, faultFlags := parseFaultApplyFlags(subArgs)
+		if flags.yes {
+			faultFlags.yes = true
+		}
 		exec := executor.NewExecutor(audit)
 		c := cmd.NewFaultApplyCmd(obs, runner, exec, store, audit)
 		return c.Run(faultID, faultFlags.force, faultFlags.yes)
