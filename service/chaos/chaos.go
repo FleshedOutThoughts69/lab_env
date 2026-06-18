@@ -67,7 +67,7 @@ func New(next http.Handler, latencyMS, dropPercent int, reqCounter, errCounter f
 
 // ServeHTTP applies chaos effects then calls the wrapped handler.
 //
-// Drop percent applies to ALL routes including /health — a dropped request
+// Drop percent applies to all routes EXCEPT /health (liveness probe must survive).
 // returns 503 regardless of path. This matches "at the earliest possible point"
 // from Application Runtime Contract §5.1.
 //
@@ -79,7 +79,7 @@ func New(next http.Handler, latencyMS, dropPercent int, reqCounter, errCounter f
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Drop check: apply to all routes before any request-specific processing.
 	// Application Runtime Contract §5.1: "at the earliest possible point".
-	if h.dropPercent > 0 {
+	if h.dropPercent > 0 && r.URL.Path != "/health" {
 		if rand.IntN(100) < h.dropPercent {
 			if h.logger != nil {
 				h.logger.Warn("chaos drop", "path", r.URL.Path, "drop_percent", h.dropPercent)

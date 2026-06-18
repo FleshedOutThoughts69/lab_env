@@ -23,11 +23,10 @@ import (
 // analogous to the latency exemption. Verify the implementation matches.
 // If drops should apply to /health, this test documents the decision.
 func TestChaosHandler_Drop100_HealthIsExempted(t *testing.T) {
-	t.Skip("design decision: verify whether /health should be exempt from drops like it is from latency")
-	// This test is left as a skip to document the open design question.
-	// The current implementation drops ALL routes including /health for drop percent.
-	// The latency exemption was explicit (go ServeHTTP comment).
-	// If /health should also be exempt from drops, uncomment and implement.
+	This test is left as a skip to document the open design question.
+	The current implementation drops ALL routes including /health for drop percent.
+	The latency exemption was explicit (go ServeHTTP comment).
+	If /health should also be exempt from drops, uncomment and implement.
 }
 
 // TestChaosHandler_Drop100_AllNonHealthRoutesDrop verifies that at 100% drop
