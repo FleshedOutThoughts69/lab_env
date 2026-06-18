@@ -161,24 +161,23 @@ func TestChaosHandler_ZeroDrop_PassesThrough(t *testing.T) {
 // This test uses a no-op logger and does NOT actually trigger OOM —
 // it verifies the sync.Once guard via a mock allocator.
 func TestStartOOM_SyncOnce_GuardsAgainstDuplicateStart(t *testing.T) {
-	t.Skip("StartOOMForTest not exported; implement OOM chaos hook and export for test coverage")
-	// var startCount atomic.Int32
+	var startCount atomic.Int32
 
-	// // Use the test-hook version of StartOOM that accepts an allocator function
-	// // instead of allocating real memory.
-	// for i := 0; i < 10; i++ {
-	// 	StartOOMForTest(func() {
-	// 		startCount.Add(1)
-	// 	})
-	// }
+	// Use the test-hook version of StartOOM that accepts an allocator function
+	// instead of allocating real memory.
+	for i := 0; i < 10; i++ {
+		StartOOMForTest(func() {
+			startCount.Add(1)
+		})
+	}
 
-	// // Allow goroutines to start
-	// time.Sleep(50 * time.Millisecond)
+	// Allow goroutines to start
+	time.Sleep(50 * time.Millisecond)
 
-	// if startCount.Load() != 1 {
-	// 	t.Errorf("OOM goroutine started %d times; sync.Once should ensure exactly 1",
-	// 		startCount.Load())
-	// }
+	if startCount.Load() != 1 {
+		t.Errorf("OOM goroutine started %d times; sync.Once should ensure exactly 1",
+			startCount.Load())
+	}
 }
 
 // TestChaosHandler_NilCallbacks_NoPanic verifies that passing nil callbacks

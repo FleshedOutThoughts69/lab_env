@@ -174,7 +174,7 @@ func parseBool(s string) bool {
 // Applied to app_env which is embedded in JSON response bodies and log lines.
 // Newlines in app_env would break L-002 (last log line must be valid JSON).
 // Only printable ASCII is permitted; non-ASCII Unicode is passed through.
-func sanitizeEnvString(s string) string {
+func SanitizeEnvString(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {

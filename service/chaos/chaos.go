@@ -136,3 +136,13 @@ func StartOOM(logger *logging.Logger) {
 		}()
 	})
 }
+
+// StartOOMForTest is a test hook that triggers the OOM once‑guard with a
+// custom allocator. The real StartOOM uses a loop that allocates 64 MiB
+// chunks until the process is killed; this version allows tests to verify
+// the sync.Once behaviour without actually allocating memory.
+func StartOOMForTest(allocate func()) {
+	oomOnce.Do(func() {
+		allocate()
+	})
+}

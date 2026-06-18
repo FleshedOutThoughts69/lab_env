@@ -10,7 +10,7 @@ package config
 //     wrong diagnostic output breaks the fault matrix
 //   - parseBool: an operator setting CHAOS_OOM_TRIGGER=true (not "1") would
 //     silently not activate OOM, making F-014 appear to not work
-//   - sanitizeEnvString: a newline in app_env breaks log JSON and L-002
+//   - SanitizeEnvString: a newline in app_env breaks log JSON and L-002
 
 import (
 	"os"
@@ -188,34 +188,33 @@ func TestLoad_MissingChaosVars_AllDefault(t *testing.T) {
 // A newline in app_env would produce a multi-line body from GET /, breaking
 // L-002 (last line of app.log must be valid JSON) and conformance check parsing.
 func TestSanitizeEnvString_StripsControlChars(t *testing.T) {
-	t.Skip("SanitizeEnvString not exported; implement and export for test coverage post‑VM")
-	// cases := []struct {
-	// 	raw  string
-	// 	want string
-	// }{
-	// 	{"prod", "prod"},
-	// 	{"pro\nd", "prod"},          // newline stripped
-	// 	{"pro\td", "prod"},          // tab stripped
-	// 	{"pro\x00d", "prod"},        // null byte stripped
-	// 	{"pro\x1bd", "prod"},        // ESC stripped
-	// 	{"pro\x7fd", "prod"},        // DEL stripped
-	// 	{"prod\n", "prod"},          // trailing newline
-	// 	{"\nprod", "prod"},          // leading newline
-	// 	{"pro duction", "pro duction"}, // space preserved
-	// 	{"prod-v2", "prod-v2"},      // hyphens preserved
-	// 	{"prod_v2", "prod_v2"},      // underscores preserved
-	// 	{"", ""},                    // empty → stays empty (default applied separately)
-	// }
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"prod", "prod"},
+		{"pro\nd", "prod"},          // newline stripped
+		{"pro\td", "prod"},          // tab stripped
+		{"pro\x00d", "prod"},        // null byte stripped
+		{"pro\x1bd", "prod"},        // ESC stripped
+		{"pro\x7fd", "prod"},        // DEL stripped
+		{"prod\n", "prod"},          // trailing newline
+		{"\nprod", "prod"},          // leading newline
+		{"pro duction", "pro duction"}, // space preserved
+		{"prod-v2", "prod-v2"},      // hyphens preserved
+		{"prod_v2", "prod_v2"},      // underscores preserved
+		{"", ""},                    // empty → stays empty (default applied separately)
+	}
 
-	// for _, tc := range cases {
-	// 	t.Run(tc.raw, func(t *testing.T) {
-	// 		// Use the sanitize function directly.
-	// 		got := SanitizeEnvString(tc.raw)
-	// 		if got != tc.want {
-	// 			t.Errorf("SanitizeEnvString(%q) = %q, want %q", tc.raw, got, tc.want)
-	// 		}
-	// 	})
-	// }
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			// Use the sanitize function directly.
+			got := SanitizeEnvString(tc.raw)
+			if got != tc.want {
+				t.Errorf("SanitizeEnvString(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
 }
 
 // TestLoad_InvalidLatencyMS_DisablesMode verifies that a non-integer
