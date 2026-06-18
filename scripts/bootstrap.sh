@@ -7,7 +7,7 @@
 # Idempotency: every step checks current state before acting.
 # Running on an already-conformant system is safe; produces no changes.
 #
-# Target: Ubuntu 22.04 LTS (amd64). Requires root. Uses apt-get.
+# Target: Ubuntu 22.04 LTS (amd64 / aarch64). Requires root. Uses apt-get.
 #
 # Exit codes:
 #   0  provisioning complete; environment is CONFORMANT
@@ -20,6 +20,8 @@ readonly APP_USER="appuser"
 readonly APP_GROUP="appuser"
 readonly APP_UID=1001
 readonly APP_GID=1001
+readonly DEV_USER="devuser"
+readonly DEV_UID=1000
 readonly APP_BINARY="/opt/app/server"
 readonly APP_CONFIG="/etc/app/config.yaml"
 readonly APP_LOG_DIR="/var/log/app"
@@ -39,6 +41,7 @@ readonly LAB_STATE_DIR="/var/lib/lab"
 readonly SERVICE_SRC="${LAB_DIR}/service"
 readonly LOOP_IMAGE="${LAB_STATE_DIR}/app-state.img"
 readonly SUDOERS_FILE="/etc/sudoers.d/lab-appuser"
+readonly SUDOERS_DEV="/etc/sudoers.d/lab-devuser"
 readonly REQUIRED_GO_MAJOR=1
 readonly REQUIRED_GO_MINOR=22
 
@@ -77,7 +80,14 @@ apt-get install -y -qq \
     nftables \
     golang-go \
     iproute2 \
-    procps
+    procps \
+    tcpdump \
+    strace \
+    lsof \
+    htop \
+    vim \
+    dnsutils \
+    netcat-openbsd
 log "OK"
 
 # ── Step 02b: Verify Go version ───────────────────────────────────────────────
@@ -132,6 +142,33 @@ fi
 SHELL=$(getent passwd "${APP_USER}" | cut -d: -f7)
 if [[ "${SHELL}" != "/usr/sbin/nologin" && "${SHELL}" != "/bin/false" ]]; then
     fail "${APP_USER} has shell ${SHELL}; expected /usr/sbin/nologin"
+fi
+log "OK"
+
+# ── Step 03b: Create devuser with sudo access ─────────────────────────────────
+step "03b-devuser"
+if ! id "${DEV_USER}" &>/dev/null; then
+    useradd \
+        --uid "${DEV_UID}" \
+        --groups sudo \
+        --create-home \
+        --shell /bin/bash \
+        --comment "Lab environment learner user" \
+        "${DEV_USER}"
+    log "  created ${DEV_USER} uid=${DEV_UID} with sudo"
+else
+    ACTUAL_UID=$(id -u "${DEV_USER}")
+    if [[ "${ACTUAL_UID}" -ne "${DEV_UID}" ]]; then
+        fail "${DEV_USER} exists with uid=${ACTUAL_UID}; expected ${DEV_UID}"
+    fi
+    log "  ${DEV_USER} already exists (uid=${DEV_UID})"
+fi
+
+# Add passwordless sudo for devuser
+if [[ ! -f "${SUDOERS_DEV}" ]]; then
+    echo "devuser ALL=(ALL:ALL) NOPASSWD: ALL" > "${SUDOERS_DEV}"
+    chmod 0440 "${SUDOERS_DEV}"
+    log "  added passwordless sudo for ${DEV_USER}"
 fi
 log "OK"
 
@@ -212,14 +249,15 @@ log "OK"
 
 # ── Step 08: Build the Go service binary ──────────────────────────────────────
 # CGO_ENABLED=0: fully static binary, no glibc dependency.
-# GOOS=linux GOARCH=amd64: correct target regardless of build host.
+# Builds for the host architecture (no cross-compile flags).
 # Binary: appuser:appuser mode 0750 — satisfies conformance check F-001.
 step "08-build-service"
 [[ -d "${SERVICE_SRC}" ]] || fail "service source not found at ${SERVICE_SRC}"
 TMPGOPATH=$(mktemp -d /tmp/go-build-XXXXXX)
 (
     cd "${SERVICE_SRC}"
-    CGO_ENABLED=0 GOPATH="${TMPGOPATH}" go build -o "${APP_BINARY}" . \
+    CGO_ENABLED=0 GOPATH="${TMPGOPATH}" \
+        go build -o "${APP_BINARY}" . \
         || fail "go build failed"
 )
 rm -rf "${TMPGOPATH}"
