@@ -217,6 +217,19 @@ func (c *FaultApplyCmd) Run(id string, force, yes bool) output.CommandResult {
 	}
 
 	// Apply succeeded — atomically update state to DEGRADED.
+	// Post‑apply verification: run the fault's FailingChecks to confirm the
+	// fault is active. If any expected failing check still passes, warn the
+	// operator but do not revert the mutation.
+	if len(fault.Def.Postcondition.FailingChecks) > 0 {
+		for _, checkID := range fault.Def.Postcondition.FailingChecks {
+			check := conformance.CheckByID(checkID)
+			if check != nil {
+				if err := check.Execute(c.obs); err == nil {
+					fmt.Fprintf(os.Stderr, "warning: post‑apply check %s passed; fault %s may not be fully active\n", checkID, id)
+				}
+			}
+		}
+	}
 	now := time.Now().UTC()
 	sf.State = state.StateDegraded
 	sf.ClassificationValid = true
