@@ -38,7 +38,7 @@ import (
 	"net/http"
 	"os"
 	"time"
-
+	"net"
 	"lab_env/service/logging"
 	"lab_env/service/signals"
 	"lab_env/service/telemetry"
@@ -101,6 +101,7 @@ func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging
 	mux.HandleFunc("GET /", s.handleRoot)
 	mux.HandleFunc("GET /slow", s.handleSlow)
 	mux.HandleFunc("GET /headers", s.handleHeaders)
+	mux.HandleFunc("GET /reset", s.handleReset)
 
 	s.http = &http.Server{
 		Addr:    addr,
@@ -209,6 +210,32 @@ func (s *Server) handleHeaders(w http.ResponseWriter, r *http.Request) {
 		r.Header.Get("X-Real-IP"),
 		r.Header.Get("User-Agent"),
 	)
+}
+
+// handleReset handles GET /reset.
+// Sets SO_LINGER with zero timeout and closes the connection immediately,
+// sending a TCP RST (connection reset) instead of a clean FIN.
+func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
+	s.metrics.RequestsTotal.Add(1)
+
+	// Hijack the connection to access the underlying TCP socket.
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "server does not support hijacking", http.StatusInternalServerError)
+		return
+	}
+
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+
+	// Set SO_LINGER: l_onoff=1, l_linger=0 → immediate RST on close.
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetLinger(0)
+	}
+
+	conn.Close()
 }
 
 // touchStatePath updates the mtime of the state touch target, creating it if absent.
