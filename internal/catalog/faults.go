@@ -16,7 +16,7 @@ func AllImpls() []*FaultImpl {
 		faultF005(), faultF006(), faultF007(), faultF008(),
 		faultF009(), faultF010(),
 		faultF013(), faultF014(), faultF015(), faultF016(),
-		faultF017(), faultF018(), faultF020(), faultF021()
+		faultF017(), faultF018(), faultF020(), faultF021(),
 	}
 }
 
