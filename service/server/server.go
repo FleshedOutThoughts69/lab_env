@@ -134,7 +134,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.metrics.RequestsTotal.Add(1)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, `{"status":"ok"}`)
+	fmt.Fprintf(w, `{"status":"ok","app_env":"%s","config_loaded":true}`, s.appEnv)
 }
 
 // handleRoot handles GET /.
