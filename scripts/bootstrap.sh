@@ -181,6 +181,7 @@ install -d -m 0755 -o "${APP_USER}" -g "${APP_GROUP}" "${APP_LOG_DIR}"
 install -d -m 0755 -o "${APP_USER}" -g "${APP_GROUP}" "${APP_STATE_DIR}"
 install -d -m 0755 -o root      -g root        "${LAB_STATE_DIR}"
 install -d -m 0755 -o root      -g root        "${TLS_DIR}"
+install -d -m 0755 -o "${APP_USER}" -g "${APP_GROUP}" /tmp/go-cache-appuser
 # /run/app is created by systemd RuntimeDirectory=app on service start.
 # Do NOT create it here; systemd owns it to ensure correct tmpfs semantics.
 log "OK"
@@ -241,10 +242,11 @@ else
     log "  ${APP_CONFIG} already present"
 fi
 
-if [[ ! -f "${CHAOS_ENV}" ]]; then
-    install -m 0644 -o "${APP_USER}" -g "${APP_GROUP}" /dev/null "${CHAOS_ENV}"
-    log "  created empty ${CHAOS_ENV} (mode 0644)"
-fi
+# Always reset chaos.env to empty. Chaos variables are fault-injection
+# mechanisms, not learner-modifiable configuration. R3 reset must clear
+# all active chaos modes, including those from non-reversible faults.
+install -m 0644 -o "${APP_USER}" -g "${APP_GROUP}" /dev/null "${CHAOS_ENV}"
+log "  reset ${CHAOS_ENV} to empty"
 log "OK"
 
 # ── Step 08: Build the Go service binary ──────────────────────────────────────
@@ -256,7 +258,7 @@ step "08-build-service"
 TMPGOPATH=$(mktemp -d /tmp/go-build-XXXXXX)
 (
     cd "${SERVICE_SRC}"
-    CGO_ENABLED=0 GOPATH="${TMPGOPATH}" \
+    CGO_ENABLED=0 GOCACHE=/tmp/go-cache-appuser GOPATH="${TMPGOPATH}" go build -o "${APP_BINARY}" . \
         go build -o "${APP_BINARY}" . \
         || fail "go build failed"
 )
@@ -269,7 +271,7 @@ log "OK"
 # ── Step 08b: Build the lab CLI binary ────────────────────────────────────────
 step "08b-build-lab-cli"
 cd "${LAB_DIR}"
-CGO_ENABLED=0 go build -o /usr/local/bin/lab .
+CGO_ENABLED=0 GOCACHE=/tmp/go-cache-appuser go build -o /usr/local/bin/lab .
 chmod 0755 /usr/local/bin/lab
 log "  built /usr/local/bin/lab"
 log "OK"
