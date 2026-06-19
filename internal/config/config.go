@@ -75,6 +75,9 @@ const (
 
 	// TLSKeyPath is the TLS private key.
 	TLSKeyPath = "/etc/nginx/tls/app.local.key"
+
+	// ServiceSourceDir is the directory containing the Go service source.
+	ServiceSourceDir = "/opt/lab-env/service"
 )
 
 // ── Canonical file modes (canonical-environment.md §2.3) ─────────────────────
@@ -110,6 +113,9 @@ const (
 
 	// ServiceGroup is the group for service-owned files.
 	ServiceGroup = "appuser"
+
+	// ServiceSourceDir is the directory containing the Go service source.
+	ServiceSourceDir = "/opt/lab-env/service"
 
 	// RootUser is the system root user for system-owned files.
 	RootUser = "root"
