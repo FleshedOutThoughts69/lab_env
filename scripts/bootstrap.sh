@@ -256,12 +256,7 @@ log "OK"
 step "08-build-service"
 [[ -d "${SERVICE_SRC}" ]] || fail "service source not found at ${SERVICE_SRC}"
 TMPGOPATH=$(mktemp -d /tmp/go-build-XXXXXX)
-(
-    cd "${SERVICE_SRC}"
-    CGO_ENABLED=0 GOCACHE=/tmp/go-cache-appuser GOPATH="${TMPGOPATH}" go build -o "${APP_BINARY}" . \
-        go build -o "${APP_BINARY}" . \
-        || fail "go build failed"
-)
+(cd "${SERVICE_SRC}" && CGO_ENABLED=0 GOCACHE=/tmp/go-cache-appuser GOPATH="${TMPGOPATH}" go build -o "${APP_BINARY}" .) || fail "go build failed"
 rm -rf "${TMPGOPATH}"
 chown "${APP_USER}:${APP_GROUP}" "${APP_BINARY}"
 chmod 0750 "${APP_BINARY}"
@@ -270,8 +265,7 @@ log "OK"
 
 # ── Step 08b: Build the lab CLI binary ────────────────────────────────────────
 step "08b-build-lab-cli"
-cd "${LAB_DIR}"
-CGO_ENABLED=0 GOCACHE=/tmp/go-cache-appuser go build -o /usr/local/bin/lab .
+cd "${LAB_DIR}" && CGO_ENABLED=0 GOCACHE=/tmp/go-cache-appuser go build -o /usr/local/bin/lab .
 chmod 0755 /usr/local/bin/lab
 log "  built /usr/local/bin/lab"
 log "OK"
