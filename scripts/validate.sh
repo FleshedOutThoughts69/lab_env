@@ -185,6 +185,17 @@ check L-003 degraded \
     'app.log contains startup entry {"msg":"server started"}' \
     bash -c "grep -q '\"msg\":\"server started\"' /var/log/app/app.log"
 
+# ── H-series: Header and reset checks ─────────────────────────────────────────
+echo "--- H: Headers & Reset ---" >&2
+
+check H-001 blocking \
+    "/headers returns proxy headers" \
+    bash -c "curl -s http://localhost/headers | jq -e '.Host != null' > /dev/null"
+
+check H-002 blocking \
+    "/reset causes TCP connection reset" \
+    bash -c "curl -s http://localhost/reset > /dev/null; test $? -eq 56"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo "" >&2
 TOTAL=$(( PASS + FAIL + DEGRADED_FAIL ))
