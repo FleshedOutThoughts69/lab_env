@@ -63,6 +63,8 @@ type ChaosConfig struct {
 	// Equivalent to fault F-008 via chaos interface.
 	// When active: systemctl stop app will hang for ~90s until SIGKILL.
 	IgnoreSIGTERM bool
+
+	ZombieChildren   bool   // ← add this	
 }
 
 // IsActive returns true if any chaos variable is non-default.
@@ -155,6 +157,9 @@ func loadChaos() ChaosConfig {
 	}
 	if parseBool(os.Getenv("CHAOS_IGNORE_SIGTERM")) {
 		c.IgnoreSIGTERM = true
+	}
+	if parseBool(os.Getenv("CHAOS_ZOMBIE_CHILDREN")) {
+		c.ZombieChildren = true
 	}
 
 	return c

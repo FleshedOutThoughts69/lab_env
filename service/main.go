@@ -197,7 +197,9 @@ func main() {
 		chaos.StartOOM(logger)
 		logger.Info("OOM chaos triggered — process will be killed by cgroup MemoryMax")
 	}
-
+	if cfg.Chaos.ZombieChildren {
+		logger.Warn("Zombie children enabled — each GET / will leak a zombie process")
+	}
 	// ── Set Degraded status if chaos modes are active ─────────────────────────
 	// Chaos active → status=Degraded. This is set after Running to reflect
 	// that the service is up and serving, but with reduced functionality.

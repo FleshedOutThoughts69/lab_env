@@ -345,21 +345,14 @@ func faultF008() *FaultImpl {
 			ResetAction:         "Rebuild binary without fault flag; redeploy. Run: lab reset --tier R3",
 		},
 		Apply: func(exec executor.Executor) error {
-			buildCmd := fmt.Sprintf(
-				"cd %s && CGO_ENABLED=0 go build -buildvcs=false -ldflags \"-X main.FaultIgnoreSIGTERM=true\" -o /tmp/app-server .",
-				cfg.ServiceSourceDir,
-			)
-			if err := exec.RunMutation("bash", "-c", buildCmd); err != nil {
-				return fmt.Errorf("F-008 Apply: rebuild failed: %w", err)
+			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte("CHAOS_IGNORE_SIGTERM=1\n"), 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
+				return fmt.Errorf("writing chaos.env: %w", err)
 			}
-			if err := exec.RunMutation("mv", "/tmp/app-server", "/opt/app/server"); err != nil {
-				return fmt.Errorf("F-008 Apply: deploy failed: %w", err)
-			}
-			if err := exec.Chown("/opt/app/server", cfg.ServiceUser, cfg.ServiceGroup); err != nil {
-				return fmt.Errorf("F-008 Apply: chown failed: %w", err)
-			}
-			if err := exec.Chmod("/opt/app/server", cfg.ModeBinary); err != nil {
-				return fmt.Errorf("F-008 Apply: chmod failed: %w", err)
+			return exec.Systemctl("restart", "app.service")
+		},
+		Recover: func(exec executor.Executor) error {
+			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte{}, 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
+				return fmt.Errorf("clearing chaos.env: %w", err)
 			}
 			return exec.Systemctl("restart", "app.service")
 		},
@@ -502,26 +495,16 @@ func faultF014() *FaultImpl {
 			ResetAction:         "Rebuild binary without fault flag; redeploy. Run: lab reset --tier R3",
 		},
 		Apply: func(exec executor.Executor) error {
-			buildCmd := fmt.Sprintf(
-				"cd %s && CGO_ENABLED=0 go build -buildvcs=false -ldflags \"-X main.FaultZombieChildren=true\" -o /tmp/app-server .",
-				cfg.ServiceSourceDir,
-			)
-			if err := exec.RunMutation("bash", "-c", buildCmd); err != nil {
-				return fmt.Errorf("F-014 Apply: rebuild failed: %w", err)
-			}
-			if err := exec.RunMutation("mv", "/tmp/app-server", "/opt/app/server"); err != nil {
-				return fmt.Errorf("F-014 Apply: deploy failed: %w", err)
-			}
-			if err := exec.Chown("/opt/app/server", cfg.ServiceUser, cfg.ServiceGroup); err != nil {
-				return fmt.Errorf("F-014 Apply: chown failed: %w", err)
-			}
-			if err := exec.Chmod("/opt/app/server", cfg.ModeBinary); err != nil {
-				return fmt.Errorf("F-014 Apply: chmod failed: %w", err)
+			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte("CHAOS_ZOMBIE_CHILDREN=1\n"), 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
+				return fmt.Errorf("F-014 Apply: writing chaos.env: %w", err)
 			}
 			return exec.Systemctl("restart", "app.service")
 		},
-		Recover: func(_ executor.Executor) error {
-			return errNonReversible("F-014")
+		Recover: func(exec executor.Executor) error {
+			if err := exec.WriteFile(cfg.ChaosEnvPath, []byte{}, 0644, cfg.ServiceUser, cfg.ServiceGroup); err != nil {
+				return fmt.Errorf("clearing chaos.env: %w", err)
+			}
+			return exec.Systemctl("restart", "app.service")
 		},
 	}
 }

@@ -35,10 +35,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"time"
-	"net"
+
 	"lab_env/service/logging"
 	"lab_env/service/signals"
 	"lab_env/service/telemetry"
@@ -58,17 +60,15 @@ const (
 )
 
 // testStateTouchPath overrides the state touch file path during tests.
-// When non‑empty, touchStatePath uses this path instead of StateTouchPath.
 var testStateTouchPath string
 
 // SetStateTouchPathForTest sets the state touch path for the duration of a test.
-// Call ResetStateTouchPath to restore the default. Not safe for concurrent use.
 func SetStateTouchPathForTest(path string) { testStateTouchPath = path }
 
 // ResetStateTouchPath clears the test override.
 func ResetStateTouchPath() { testStateTouchPath = "" }
 
-// stateTouchTarget returns the path currently in use (test override or the default).
+// stateTouchTarget returns the path currently in use.
 func stateTouchTarget() string {
 	if testStateTouchPath != "" {
 		return testStateTouchPath
@@ -78,10 +78,11 @@ func stateTouchTarget() string {
 
 // Server wraps the HTTP server and its dependencies.
 type Server struct {
-	http    *http.Server
-	metrics *telemetry.Metrics
-	appEnv  string
-	logger  *logging.Logger
+	http           *http.Server
+	metrics        *telemetry.Metrics
+	appEnv         string
+	logger         *logging.Logger
+	zombieChildren bool
 }
 
 // New creates a Server bound to addr.
@@ -89,11 +90,12 @@ type Server struct {
 // metrics is the shared atomic counter set incremented by handlers.
 // The handler chain is: chaos middleware → mux → handlers.
 // The chaos middleware is applied by the caller (main.go) wrapping the mux.
-func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging.Logger) *Server {
+func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging.Logger, zombieChildren bool) *Server {
 	s := &Server{
-		metrics: metrics,
-		appEnv:  appEnv,
-		logger:  logger,
+		metrics:        metrics,
+		appEnv:         appEnv,
+		logger:         logger,
+		zombieChildren: zombieChildren,
 	}
 
 	mux := http.NewServeMux()
@@ -101,7 +103,7 @@ func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging
 	mux.HandleFunc("GET /slow", s.handleSlow)
 	mux.HandleFunc("GET /headers", s.handleHeaders)
 	mux.HandleFunc("GET /reset", s.handleReset)
-	mux.HandleFunc("GET /", s.handleRoot)        // must be last
+	mux.HandleFunc("GET /", s.handleRoot) // must be last
 
 	s.http = &http.Server{
 		Addr:    addr,
@@ -116,7 +118,7 @@ func New(addr string, appEnv string, metrics *telemetry.Metrics, logger *logging
 	return s
 }
 
-// HTTPServer returns the underlying *http.Server for use in Shutdown calls.
+// HTTPServer returns the underlying *http.Server.
 func (s *Server) HTTPServer() *http.Server {
 	return s.http
 }
@@ -155,6 +157,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	s.metrics.RequestsTotal.Add(1)
 	w.Header().Set("Content-Type", "application/json")
+
+	// F-014: if zombie children mode is active, spawn a child that will become a zombie.
+	if s.zombieChildren {
+		cmd := exec.Command("true")
+		cmd.Start()
+		// Never cmd.Wait() — the child exits immediately and becomes a zombie.
+	}
 
 	if err := touchStatePath(); err != nil {
 		s.metrics.ErrorsTotal.Add(1)
@@ -218,7 +227,6 @@ func (s *Server) handleHeaders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	s.metrics.RequestsTotal.Add(1)
 
-	// Hijack the connection to access the underlying TCP socket.
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "server does not support hijacking", http.StatusInternalServerError)
@@ -230,7 +238,6 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set SO_LINGER: l_onoff=1, l_linger=0 → immediate RST on close.
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
 		tcpConn.SetLinger(0)
 	}
