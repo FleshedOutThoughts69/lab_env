@@ -136,6 +136,7 @@ The Control Plane MAY read this file for additional diagnostic context, but its 
   "memory_rss_mb": 45.2,
   "open_fds": 18,
   "disk_usage_percent": 67,
+  "inode_usage_percent": 12,
   "requests_total": 1042,
   "errors_total": 3,
   "chaos_active": false,
@@ -150,6 +151,7 @@ The Control Plane MAY read this file for additional diagnostic context, but its 
 - **`requests_total` / `errors_total`**: Cumulative counters since process start. Errors include any 5xx responses and request‑handling panics.  
 - **`chaos_active`**: Boolean; `true` if one or more chaos modes are active.  
 - **`chaos_modes`**: Array of strings; the names of active chaos variables (e.g., `["latency", "drop"]`).
+- **`inode_usage_percent`**: Percentage of inode usage on the /var/lib/app loopback mount. Distinguishes inode exhaustion (F‑018) from block exhaustion when used together with disk_usage_percent.
 
 The telemetry file SHALL be written atomically (write‑temp‑rename) to avoid partial reads. The Control Plane and learners can poll it at any time. The conformance check **L‑004** verifies that `chaos_active` is `false` in the absence of a fault.
 
