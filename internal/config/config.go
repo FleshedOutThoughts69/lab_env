@@ -114,9 +114,6 @@ const (
 	// ServiceGroup is the group for service-owned files.
 	ServiceGroup = "appuser"
 
-	// ServiceSourceDir is the directory containing the Go service source.
-	ServiceSourceDir = "/opt/lab-env/service"
-
 	// RootUser is the system root user for system-owned files.
 	RootUser = "root"
 
