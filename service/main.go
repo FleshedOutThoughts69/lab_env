@@ -146,7 +146,7 @@ func main() {
 
 	// ── Step 9: Build HTTP server ─────────────────────────────────────────────
 	// chaos.New wraps the server mux with latency/drop middleware.
-	svc := server.New(cfg.Server.Addr, cfg.AppEnv, metrics, logger)
+	svc := server.New(cfg.Server.Addr, cfg.AppEnv, metrics, logger, cfg.Chaos.ZombieChildren)
 	chaosHandler := chaos.New(
 		svc.HTTPServer().Handler,
 		cfg.Chaos.LatencyMS,
