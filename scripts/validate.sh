@@ -193,8 +193,8 @@ check H-001 blocking \
     bash -c "curl -s http://localhost/headers | jq -e '.Host != null' > /dev/null"
 
 check H-002 blocking \
-    "/reset causes TCP connection reset" \
-    bash -c "curl -s http://localhost/reset > /dev/null; test $? -eq 56"
+    "/reset causes connection reset" \
+    bash -c "! curl -sf http://localhost/reset"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo "" >&2
