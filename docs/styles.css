@@ -4,6 +4,9 @@
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── C-00 — Page shell (reset, container, skip link, scroll, typography) ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
 /* Reset */
 body {
@@ -801,6 +804,9 @@ h2 {
 .get-started__note a {
   color: rgba(255,255,255,0.4);
   text-decoration: underline;
+}
+.get-started .cta--block {
+  margin-top: var(--sp-4);
 }
 
 
