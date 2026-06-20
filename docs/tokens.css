@@ -1,0 +1,486 @@
+/* ═══════════════════════════════════════════════════════════════
+   lab_env Landing Page — Design Tokens
+   tokens.css — imported first in <head> before all other styles
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+
+  /* ── Colour — Brand ─────────────────────────────────────────
+     Three brand colours. Navy is the primary dark surface.
+     Teal is the primary accent — used for interactive elements,
+     active states, highlights, and the _env wordmark suffix.
+     Amber is the secondary accent — used for reset tier badges
+     and state transition output in the terminal.
+     ────────────────────────────────────────────────────────── */
+  --c-navy:    #1A1F2E;   /* hero bg, get-started bg, drawer panel */
+  --c-teal:    #0D9488;   /* primary accent: CTAs, links, focus, borders */
+  --c-amber:   #F59E0B;   /* secondary accent: reset badges, state lines */
+
+  /* ── Colour — Semantic ──────────────────────────────────────
+     Pass/fail colours for conformance check rows and terminal
+     output. Sourced from GitHub's dark theme — familiar to
+     developers, high contrast on both light and dark surfaces.
+     ────────────────────────────────────────────────────────── */
+  --c-pass:    #3fb950;   /* check ✓ icons, terminal ok output */
+  --c-fail:    #f85149;   /* check ✗ icons, terminal error output */
+
+  /* ── Colour — Terminal ──────────────────────────────────────
+     Terminal and code block colours. Sourced from GitHub dark
+     theme. Used by C-04 terminal and C-15 code blocks.
+
+     These are intentionally not derived from brand colours —
+     they must remain readable against the near-black terminal
+     background regardless of any brand colour changes.
+     ────────────────────────────────────────────────────────── */
+  --c-term-bg:   #0d1117;   /* terminal window + code block background */
+  --c-term-text: #8b949e;   /* default terminal output (muted grey) */
+  --c-cmd:       #79c0ff;   /* command lines: terminal + code blocks */
+
+  /* ── Colour — Page surfaces ─────────────────────────────────
+     Light-mode page surface colours. These replace all
+     var(--color-*) references — those are Claude.ai interface
+     tokens that do not exist in a standalone HTML file.
+     ────────────────────────────────────────────────────────── */
+  --c-bg:      #ffffff;           /* page bg, nav, fault cards, chips */
+  --c-surface: #F8F9FA;           /* stat cards, badges, pull quote */
+  --c-border:  rgba(0,0,0,0.1);  /* all hairline borders + separators */
+
+  /* ── Colour — Text ──────────────────────────────────────────
+     Three-level hierarchy. Primary for headings and labels.
+     Secondary for body copy. Muted for metadata, badges,
+     eyebrow labels, and supplementary information.
+
+     Accessibility note: --c-text-muted at 2.5:1 against white
+     does not meet WCAG AA. It is used exclusively for
+     supplementary metadata — never as the sole carrier of
+     meaning. See the accessibility table below for full detail.
+     ────────────────────────────────────────────────────────── */
+  --c-text-primary:   #1F2937;
+  --c-text-secondary: #6B7280;
+  --c-text-muted:     #9CA3AF;
+
+  /* ── Colour — Dark surface text ─────────────────────────────
+     Text on navy backgrounds (hero, drawer, get-started, footer).
+     Expressed as rgba(255,255,255,N) — the alpha communicates
+     hierarchy on dark surfaces the same way the grey scale
+     communicates it on light surfaces.
+
+     These are NOT named tokens. They are used inline as rgba()
+     values. They are documented here so all instances use the
+     same opacity values and do not drift independently.
+
+     Usage guide:
+       rgba(255,255,255, 0.90) — headings on navy
+       rgba(255,255,255, 0.55) — subheadlines, body copy on navy
+       rgba(255,255,255, 0.45) — footer logo
+       rgba(255,255,255, 0.40) — eyebrow dark variant, stat labels
+       rgba(255,255,255, 0.30) — footer links, micro-copy
+       rgba(255,255,255, 0.20) — terminal title bar label
+       rgba(255,255,255, 0.18) — footer copyright
+     ────────────────────────────────────────────────────────── */
+
+  /* ── Colour — Footer ────────────────────────────────────────
+     Footer background is #0d1117 — the same value as
+     --c-term-bg, but named separately because it serves a
+     different semantic role. The colour step from --c-navy
+     (#1A1F2E) to --c-footer-bg (#0d1117) is the visual
+     separator between the get-started section and footer.
+     No border-top is needed; the colour change is sufficient.
+     ────────────────────────────────────────────────────────── */
+  --c-footer-bg: #0d1117;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     TYPOGRAPHY
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Font families ──────────────────────────────────────────
+     Two system font stacks. No Google Fonts — avoids the
+     render-blocking network request and keeps the page under
+     100 KB total.
+
+     --font-sans: system-ui covers -apple-system (macOS/iOS),
+     Segoe UI (Windows), Roboto (Android), and falls back to
+     generic sans-serif. Used for all body text and headings.
+
+     --font-mono: ui-monospace covers SF Mono (macOS), Consolas
+     (Windows), Liberation Mono (Linux). Used for: terminal
+     output, code blocks, command names, eyebrow labels, stat
+     numbers, nav logo, footer logo, and tech badges.
+     ────────────────────────────────────────────────────────── */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont,
+               'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas,
+               'Liberation Mono', monospace;
+
+  /* ── Type scale ─────────────────────────────────────────────
+     Six fixed sizes plus two fluid sizes for key headings.
+     The scale is deliberately sparse — gaps prevent arbitrary
+     intermediate sizes during build. If a size is needed that
+     is not in this scale, revisit the scale rather than
+     hardcoding a new value.
+
+     --text-xs:     10px  badges, eyebrows, series labels, metadata
+     --text-sm:     12px  body copy, nav links, footer links
+     --text-base:   14px  CTA labels, filter chips, cmd names
+     --text-lg:     18px  stat card numbers
+     --text-xl:     22px  reserved for legacy fixed usage
+     --text-hero:   fluid hero h1 — 18px at mobile, 28px at desktop
+     --text-section-heading: fluid section headings — 18px at mobile, 22px at desktop
+     ────────────────────────────────────────────────────────── */
+  --text-xs:   10px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-lg:   18px;
+  --text-xl:   22px;   /* fixed only; prefer fluid token for section headings */
+  --text-hero: clamp(18px, 4vw, 28px);
+  --text-section-heading: clamp(18px, 2.5vw, 22px);
+
+  /* ── Font weight ────────────────────────────────────────────
+     Medium is the default for all emphasised text — reliable
+     distinction from 400 on all platforms. Semibold and bold
+     are opt‑in: reserved for moments that need heavier hierarchy
+     (e.g. hero headline at large viewports). Use sparingly,
+     and never below 14px — heavier weights can lose clarity
+     at small sizes on some system fonts.
+     ────────────────────────────────────────────────────────── */
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* ── Line heights ───────────────────────────────────────────
+     Six values covering every typographic context on the page.
+     Values ascend from tight to loose.
+
+     --lh-tight:    1.0  stat numbers only — monospaced numerals
+                         stacked with no extra leading.
+                         WARNING: value 1.0 clips descenders
+                         (g, p, y, j). Use only for numeral-only
+                         displays, never for mixed text.
+
+     --lh-snug:     1.4  headings, check-row descriptions, fault
+                         symptom text — compact for UI elements
+                         that may wrap over 2 lines.
+
+     --lh-compact:  1.5  dense UI text — command description
+                         column, short label-value pairs.
+
+     --lh-quote:    1.6  pull quote and footer link list — slightly
+                         more open than compact for longer italic
+                         or decorative text.
+
+     --lh-body:     1.7  body copy, hero subheadline, problem text
+                         — the standard prose reading rhythm.
+
+     --lh-terminal: 1.75 terminal output lines and code blocks —
+                         slightly more open than body to give
+                         monospaced content breathing room and
+                         improve scanability of CLI output.
+     ────────────────────────────────────────────────────────── */
+  --lh-tight:    1.0;
+  --lh-snug:     1.4;
+  --lh-compact:  1.5;
+  --lh-quote:    1.6;
+  --lh-body:     1.7;
+  --lh-terminal: 1.75;
+
+  /* ── Letter spacing ─────────────────────────────────────────
+     One tracking value. Used on eyebrow labels and the nav
+     logo — monospaced text at small sizes benefits from wider
+     tracking for readability.
+     ────────────────────────────────────────────────────────── */
+  --ls-eyebrow: 0.08em;
+
+  /* ── Text decoration ────────────────────────────────────────
+     Consistent underline appearance for links across light
+     and dark backgrounds.
+     ────────────────────────────────────────────────────────── */
+  --underline-color:     currentColor;
+  --underline-thickness: 1px;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     SPACING
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Spacing scale ──────────────────────────────────────────
+     Base-4 scale with a deliberate gap between --sp-4 and
+     --sp-6. There is no --sp-5 (20px). If 20px is needed,
+     use --sp-4 or --sp-6. The gap prevents arbitrary values
+     from accumulating during build.
+
+     --sp-1:  4px  icon gaps, tight internal padding
+     --sp-2:  8px  badge padding, small gaps, grid gutters
+     --sp-3: 12px  card padding, component internal spacing
+     --sp-4: 16px  section horizontal padding (mobile)
+     --sp-6: 24px  section horizontal padding (tablet)
+     --sp-8: 32px  section horizontal padding (desktop)
+     --sp-12:48px  section vertical gap (tablet)
+     --sp-16:64px  section vertical gap (desktop), hero bottom padding
+     ────────────────────────────────────────────────────────── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ── Grid gaps ──────────────────────────────────────────────
+     Semantic gap aliases — they point to spacing tokens so
+     the scale stays consistent. Use these instead of raw
+     margin/padding values for grid and flexbox gaps.
+     ────────────────────────────────────────────────────────── */
+  --gap-card-grid:     var(--sp-2);   /* fault card grid gap */
+  --gap-section-inner: var(--sp-4);   /* inner section gap (icon + text, etc) */
+
+
+  /* ═══════════════════════════════════════════════════════════
+     BORDER
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Border widths ──────────────────────────────────────────
+     Three values. One hairline for all standard borders. Two
+     intentional accent widths for specific decorative uses.
+
+     --bw-hairline: 0.5px  every standard border and separator.
+       On retina displays this renders as a true hairline.
+       On non-retina it renders as 1px. Consistent use of a
+       single border width means structural elements recede
+       and let content lead.
+       Usage in CSS: border: var(--bw-hairline) solid var(--c-border)
+
+     --bw-accent:   2px    pull-quote left border only. Gives the
+       decorative left rule visual weight without overwhelming
+       the adjacent body text.
+
+     --bw-active:   1.5px  active nav link underline only. Between
+       hairline and accent — heavy enough to be noticed while
+       scrolling, light enough not to dominate the nav.
+     ────────────────────────────────────────────────────────── */
+  --bw-hairline: 0.5px;
+  --bw-accent:   2px;
+  --bw-active:   1.5px;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     BORDER RADIUS
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Border radius scale ────────────────────────────────────
+     Four values covering every rounded element on the page.
+
+     --r-sm:    4px  badges, eyebrow labels, reset tier chips,
+                     code block corners — small UI elements that
+                     need a hint of rounding without appearing
+                     bubbly or button-like.
+
+     --r-md:    8px  fault cards, terminal window, CTA buttons,
+                     drawer panel, stat cards, verdict bar —
+                     the default rounding for all card-like
+                     and interactive components.
+
+     --r-lg:   10px  reserved — not currently assigned to a
+                     production component. Defined for future
+                     use at larger viewport widths.
+
+     --r-pill: 100px filter chips only. The pill shape
+                     intentionally distinguishes filter controls
+                     from card components that use --r-md. A
+                     pill reads as "toggle" not "card."
+
+     Single-sided border rule: when a border appears on only
+     one side of an element, the corners on that side must have
+     zero radius. The bordered side cannot be rounded.
+     Correct:   border-radius: 0 var(--r-md) var(--r-md) 0
+     (pull quote — left border, so left radii are 0)
+     ────────────────────────────────────────────────────────── */
+  --r-sm:   4px;
+  --r-md:   8px;
+  --r-lg:   10px;
+  --r-pill: 100px;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     SHADOW
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Box shadows ────────────────────────────────────────────
+     Two production shadows. One wireframe-only shadow not
+     included here (see "What is NOT tokenised" section).
+
+     --shadow-focus: The keyboard focus ring. Applied via
+       box-shadow on :focus-visible for every interactive
+       element. Uses var(--c-teal) so it updates automatically
+       if the accent colour changes. 3px spread with no blur
+       produces a sharp, unambiguous ring.
+       Rule: never use outline:none without providing this ring.
+
+     --shadow-card: Optional hover elevation for fault cards at
+       desktop. The inset layer adds an inner border that
+       prevents cards from disappearing on very bright monitors.
+       Currently the fault card hover uses border-color change
+       only — this shadow is available if depth is desired.
+
+     The drawer panel has no shadow — the backdrop blur
+     provides the depth separation. A shadow behind the panel
+     would create a double-depth effect and look incorrect.
+     ────────────────────────────────────────────────────────── */
+  --shadow-focus:
+    0 0 0 3px var(--c-teal);
+
+  --shadow-card:
+    0 2px 8px rgba(0,0,0,0.06),
+    inset 0 0 0 0.5px rgba(0,0,0,0.08);
+
+  /* Alias — component-list.md uses --focus-ring throughout.
+     --shadow-focus is the canonical name in this token system.
+     Both resolve to the same value. */
+  --focus-ring: var(--shadow-focus);
+
+
+  /* ═══════════════════════════════════════════════════════════
+     FOCUS
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Focus offset ──────────────────────────────────────────
+     Applied with outline-offset to nudge the focus ring away
+     from the element edge. Prevents the ring from being
+     clipped by overflow: hidden on card-like containers.
+     ────────────────────────────────────────────────────────── */
+  --focus-offset: 2px;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     TRANSITIONS
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Transition durations ───────────────────────────────────
+     Four values. All animated properties use one of these.
+
+     --t-fast:    150ms ease  hover colour and border changes —
+                              anything that should feel immediate.
+
+     --t-base:    250ms ease  drawer link entrance animation,
+                              general component state changes.
+
+     --t-drawer:  300ms ease  drawer slide-in, backdrop fade,
+                              hamburger SVG morph — long enough
+                              to feel deliberate, short enough
+                              not to block interaction.
+
+     --t-stagger: 60ms        Raw duration used as a multiplier
+                              in CSS calc() for the drawer link
+                              stagger. Not used with an easing.
+                              Usage:
+                              animation-delay: calc(var(--i) * var(--t-stagger))
+                              Link 0 = 0ms, Link 4 = 240ms.
+     ────────────────────────────────────────────────────────── */
+  --t-fast:    150ms ease;
+  --t-base:    250ms ease;
+  --t-drawer:  300ms ease;
+  --t-stagger: 60ms;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     OPACITY
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Disabled state ────────────────────────────────────────
+     Used for disabled buttons, inactive filter chips, or any
+     element in a “not available” state. Keep consistent
+     across all interactive components.
+     ────────────────────────────────────────────────────────── */
+  --opacity-disabled: 0.5;
+
+
+  /* ═══════════════════════════════════════════════════════════
+     LAYOUT
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ── Breakpoints ────────────────────────────────────────────
+     Reference values only. CSS custom properties cannot be
+     used directly inside @media (min-width: ...) expressions.
+     Use the raw px values in media queries. Document them here
+     so they stay in sync with the token values.
+
+     In @media queries always write the raw value:
+       @media (min-width: 640px) { ... }   ← tablet
+       @media (min-width: 1024px) { ... }  ← desktop
+
+     --bp-tablet: 640px
+       Triggers: hamburger → nav links · hero 2-col split ·
+       problem body 2-col · fault grid 3-col · command table
+       2-col · stat grid 4-col · code blocks side-by-side ·
+       footer single row.
+
+     --bp-desktop: 1024px
+       Triggers: hero wider grid + inline CTA + 4th stat
+       restored · command table reverts to 1-col · Lab nav
+       link added · fault card padding increases.
+
+     --bp-max: 1100px
+       Max-width of .container. Content never exceeds 1100px
+       on any viewport.
+     ────────────────────────────────────────────────────────── */
+  --bp-tablet:  640px;
+  --bp-desktop: 1024px;
+  --bp-max:     1100px;
+
+  /* ── Layout constants ───────────────────────────────────────
+     --nav-height: 52px
+       The rendered height of the sticky nav bar. Changing nav
+       padding or font size requires updating this token.
+       Used in exactly two places — both must stay in sync:
+       1. scroll-padding-top on <html> — so anchor scroll
+          targets land below the nav, not behind it.
+       2. padding-top on .drawer__panel — so drawer links
+          clear the nav bar when the drawer is open.
+
+     --measure: 65ch
+       Maximum width for prose blocks (problem statement,
+       curriculum description). Keeps line length in the
+       optimal reading range regardless of viewport width.
+     ────────────────────────────────────────────────────────── */
+  --nav-height: 52px;
+  --measure:    65ch;
+
+}
+
+
+/* ═══════ Z-INDEX SCALE
+   Use these tokens for every z-index assignment. The skip link
+   sits above everything and uses --z-skip-link (9999).
+   ═══════ */
+:root {
+  --z-nav:       100;
+  --z-backdrop:  200;
+  --z-drawer:    201;
+  --z-skip-link: 9999;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   MOTION GUARD
+   Applied outside :root so it overrides component animations
+   globally for users with prefers-reduced-motion enabled.
+
+   0.01ms not 0 — some browsers handle zero-duration transitions
+   incorrectly (produces an instant visual flicker rather than
+   a smooth cut). 0.01ms is imperceptibly fast while avoiding
+   the bug.
+
+   The cursor rule is explicit because the blink animation uses
+   step-end and does not respect the universal selector rule
+   in all browsers — it is set directly on the element.
+   ═══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:   0.01ms !important;
+    transition-duration:  0.01ms !important;
+    animation-delay:      0.01ms !important;
+  }
+  /* Cursor: stays visible but static — not hidden */
+  .cursor { animation: none; opacity: 1; }
+}

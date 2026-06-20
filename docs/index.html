@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>lab_env — chaos engineering lab</title>
+  <meta name="description"
+    content="19 faults. 25 conformance checks. A real Linux VM, a real Go
+    service, and a real operator experience. Apply a fault. Diagnose the
+    signal. Reset to conformant.">
+
+  <!-- Open Graph -->
+  <meta property="og:title"
+    content="lab_env — chaos engineering lab">
+  <meta property="og:description"
+    content="19 faults. 25 conformance checks. One environment that teaches
+    you exactly how Linux breaks — and how to fix it.">
+  <meta property="og:image"
+    content="https://fleshedoutthoughts69.github.io/lab_env/og-image.png">
+  <meta property="og:url"    content="https://fleshedoutthoughts69.github.io/lab_env/">
+  <meta property="og:type"   content="website">
+
+  <!-- Twitter card -->
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:title"       content="lab_env — chaos engineering lab">
+  <meta name="twitter:description"
+    content="19 faults. 25 conformance checks. Break Linux on purpose.
+    Learn the diagnostic pattern.">
+  <meta name="twitter:image" content="https://fleshedoutthoughts69.github.io/lab_env/og-image.png">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://fleshedoutthoughts69.github.io/lab_env/">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Skip link -->
+  <a href="#main" class="skip-link">Skip to main content</a>
+
+  <!-- C-01 Nav -->
+  <header role="banner" class="nav">
+    <div class="container nav__inner">
+
+      <a href="/" class="nav__logo" aria-label="lab_env — home">
+        lab<span>_env</span>
+      </a>
+
+      <button class="nav__hamburger"
+              aria-label="Open navigation menu"
+              aria-expanded="false"
+              aria-controls="nav-drawer">
+        <svg width="24" height="24" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round"
+             aria-hidden="true" focusable="false">
+          <path class="ham-top"    d="M4 6 L20 6"/>
+          <path class="ham-mid"    d="M4 12 L20 12"/>
+          <path class="ham-bottom" d="M4 18 L20 18"/>
+        </svg>
+      </button>
+
+      <nav class="nav__links" aria-label="Main navigation">
+        <a href="#s3-heading" class="nav__link" aria-current="false">Faults</a>
+        <a href="#s4-heading" class="nav__link" aria-current="false">Checks</a>
+        <a href="#s5-heading" class="nav__link" aria-current="false">Lab</a>
+        <a href="#s6-heading" class="nav__link" aria-current="false">Engineering</a>
+        <a href="https://github.com/FleshedOutThoughts69/lab_env"
+           class="nav__link" target="_blank"
+           rel="noopener noreferrer">GitHub ↗</a>
+      </nav>
+
+      <a href="#s7-heading" class="nav__cta cta cta--ghost">
+        Deploy the lab
+      </a>
+
+    </div>
+  </header>
+
+  <!-- C-02 Drawer -->
+  <div id="nav-drawer" class="drawer" aria-hidden="true"
+       role="dialog" aria-modal="true" aria-label="Navigation menu">
+
+    <div class="drawer__backdrop" aria-hidden="true"></div>
+
+    <nav class="drawer__panel" aria-label="Mobile navigation">
+      <a href="#s3-heading" class="drawer__link" style="--i:0">
+        <span class="drawer__num" aria-hidden="true">01</span>
+        Faults
+      </a>
+      <a href="#s4-heading" class="drawer__link" style="--i:1">
+        <span class="drawer__num" aria-hidden="true">02</span>
+        Conformance
+      </a>
+      <a href="#s5-heading" class="drawer__link" style="--i:2">
+        <span class="drawer__num" aria-hidden="true">03</span>
+        Lab
+      </a>
+      <a href="#s6-heading" class="drawer__link" style="--i:3">
+        <span class="drawer__num" aria-hidden="true">04</span>
+        Engineering
+      </a>
+      <a href="https://github.com/FleshedOutThoughts69/lab_env"
+         class="drawer__link" style="--i:4"
+         target="_blank" rel="noopener noreferrer">
+        <span class="drawer__num" aria-hidden="true">05</span>
+        GitHub ↗
+      </a>
+    </nav>
+
+  </div>
+
+  <main id="main">
+
+    <!-- C-05 Hero -->
+    <section aria-labelledby="s1-heading" class="hero">
+      <div class="container hero__grid">
+
+        <div class="hero__content">
+          <span class="eyebrow eyebrow--dark">§ 1 — Chaos engineering lab</span>
+          <h2 id="s1-heading" class="hero__h1">
+            <em>19 faults.</em> 25 conformance checks. One environment that
+            teaches you exactly how Linux breaks—and how to fix it.
+          </h2>
+          <p class="hero__sub">
+            Apply a fault. Watch the system break.
+            Diagnose the signal. Reset to conformant.
+          </p>
+
+          <div class="hero__stats" aria-label="Lab statistics">
+            <div class="hero__stat">
+              <span class="hero__stat-n">19</span>
+              <span class="hero__stat-l">faults</span>
+            </div>
+            <div class="hero__stat-div" aria-hidden="true"></div>
+            <div class="hero__stat">
+              <span class="hero__stat-n">25</span>
+              <span class="hero__stat-l">checks</span>
+            </div>
+            <div class="hero__stat-div" aria-hidden="true"></div>
+            <div class="hero__stat">
+              <span class="hero__stat-n">199</span>
+              <span class="hero__stat-l">tests</span>
+            </div>
+            <div class="hero__stat-div" aria-hidden="true"></div>
+            <div class="hero__stat hero__stat--files">
+              <span class="hero__stat-n">47</span>
+              <span class="hero__stat-l">files</span>
+            </div>
+          </div>
+
+          <a href="#s7-heading"
+             class="cta cta--clipboard"
+             role="button">Deploy the lab</a>
+          <p class="hero__cta-sub">
+            git clone github.com/…/lab_env &amp;&amp;
+            sudo bash scripts/bootstrap.sh
+          </p>
+        </div>
+
+        <div class="hero__terminal">
+          <!-- C-04 Terminal window -->
+          <div class="terminal" role="img"
+               aria-label="Terminal demo: lab fault apply F-004 puts the system into
+               DEGRADED state. Health returns 200, root returns 500. lab validate shows
+               NON-CONFORMANT. lab reset restores CONFORMANT state.">
+
+            <div class="terminal__bar" aria-hidden="true">
+              <span class="terminal__dot terminal__dot--red"></span>
+              <span class="terminal__dot terminal__dot--yellow"></span>
+              <span class="terminal__dot terminal__dot--green"></span>
+              <span class="terminal__title">lab_env — bash</span>
+            </div>
+
+            <div class="terminal__body" aria-hidden="true">
+              <p class="tl cmd">$ sudo lab fault apply F-004</p>
+              <p class="tl state">State: CONFORMANT → DEGRADED</p>
+              <p class="tl out">Active fault: F-004</p>
+              <p class="tl cmd">$ curl -s http://localhost/health</p>
+              <p class="tl pass">{"status":"ok","app_env":"prod"}</p>
+              <p class="tl cmd">$ curl -s http://localhost/</p>
+              <p class="tl fail">{"status":"error","msg":"state write failed"}</p>
+              <p class="tl cmd">$ sudo lab validate</p>
+              <p class="tl pass">[PASS] E-001  [FAIL] E-002  [FAIL] F-004</p>
+              <p class="tl fail">NON-CONFORMANT  23/25 checks passed</p>
+              <p class="tl cmd">$ sudo lab reset</p>
+              <p class="tl state">State: DEGRADED → CONFORMANT<span
+                class="cursor" aria-hidden="true"></span></p>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- C-06 Problem -->
+    <section aria-labelledby="s2-heading" class="section-light">
+      <div class="container">
+        <span class="eyebrow">§ 2 — Problem</span>
+        <h2 id="s2-heading">
+          The missing bridge between theory and production incident response.
+        </h2>
+        <div class="problem__body">
+          <p class="problem__text">
+            Most reliability training stops at diagrams. You read about OOM kills,
+            inode exhaustion, and TCP RSTs—but you never feel them. This lab puts
+            you in front of a real Ubuntu machine, with a real Go service, a real
+            nginx reverse proxy, and real systemd units. You learn the diagnostic
+            pattern, not just the fix.
+          </p>
+          <blockquote class="pull-quote">
+            "Every layer of the filesystem → permissions → process → service →
+            socket → proxy → response chain has a fault that isolates exactly
+            one failure cause."
+          </blockquote>
+        </div>
+      </div>
+    </section>
+
+    <!-- C-09 Fault catalog -->
+    <section aria-labelledby="s3-heading" class="section-light">
+      <div class="container">
+        <span class="eyebrow">§ 3 — Fault catalog</span>
+        <h2 id="s3-heading">
+          Every fault isolates one layer. Every fault has a known
+          diagnostic pattern.
+        </h2>
+        <p>Each fault is a deterministic mutation that breaks exactly
+        one thing. The postcondition tells you exactly which checks fail.</p>
+
+        <!-- C-08 Filter chips -->
+        <div class="filter-row"
+             role="radiogroup"
+             aria-label="Filter faults by layer">
+          <button class="chip chip--active"
+                  role="radio" aria-checked="true"
+                  data-filter="all">All</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="filesystem">Filesystem</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="permissions">Permissions</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="service">Service</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="proxy">Proxy</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="process">Process</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="network">Network</button>
+          <button class="chip" role="radio" aria-checked="false"
+                  data-filter="socket">Socket</button>
+        </div>
+        <p class="filter-count"
+           aria-live="polite"
+           aria-atomic="true">19 faults shown</p>
+
+        <!-- C-07 Fault cards -->
+        <div class="fault-grid">
+          <!-- 19 fault cards populated from data -->
+          <article class="fault-card" data-layer="filesystem" style="--card-id: fault-F001" tabindex="0">
+            <div class="fault-card__id">F-001</div>
+            <div class="fault-card__layer">filesystem</div>
+            <p class="fault-card__symptom">Config deleted → restart loop, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005 · Passing: F-003, F-007</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F002" tabindex="0">
+            <div class="fault-card__id">F-002</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">App on wrong port (9090), health direct 200 but proxy 502</p>
+            <p class="fault-card__detail">Failing: P-002, E-001, E-002, E-003, E-004, E-005 · Passing: S-001, P-001, F-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="permissions" style="--card-id: fault-F003" tabindex="0">
+            <div class="fault-card__id">F-003</div>
+            <div class="fault-card__layer">permissions</div>
+            <p class="fault-card__symptom">Config chmod 000 → app can't read, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005 · Passing: F-002, F-007</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="permissions" style="--card-id: fault-F004" tabindex="0">
+            <div class="fault-card__id">F-004</div>
+            <div class="fault-card__layer">permissions</div>
+            <p class="fault-card__symptom">/health 200, / 500 — state dir chmod 000</p>
+            <p class="fault-card__detail">Failing: E-002, F-004 · Passing: S-001, E-001, E-003</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="permissions" style="--card-id: fault-F005" tabindex="0">
+            <div class="fault-card__id">F-005</div>
+            <div class="fault-card__layer">permissions</div>
+            <p class="fault-card__symptom">Server binary chmod 640 → exec denied, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005, F-001 · Passing: F-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F006" tabindex="0">
+            <div class="fault-card__id">F-006</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">APP_ENV removed → app fails startup, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005 · Passing: F-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="proxy" style="--card-id: fault-F007" tabindex="0">
+            <div class="fault-card__id">F-007</div>
+            <div class="fault-card__layer">proxy</div>
+            <p class="fault-card__symptom">Nginx wrong upstream (9090) → 502, app still on 8080</p>
+            <p class="fault-card__detail">Failing: E-001, E-002, E-003, E-004, E-005 · Passing: S-001, P-001, P-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F008" tabindex="0">
+            <div class="fault-card__id">F-008</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">Apply returns error (binary rebuild needed). State stays CONFORMANT.</p>
+            <p class="fault-card__detail">No checks fail (no mutation occurred)</p>
+            <span class="fault-card__reset">R3</span>
+          </article>
+          <article class="fault-card" data-layer="permissions" style="--card-id: fault-F009" tabindex="0">
+            <div class="fault-card__id">F-009</div>
+            <div class="fault-card__layer">permissions</div>
+            <p class="fault-card__symptom">App log chmod 000 → startup fails, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005 · Passing: F-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="filesystem" style="--card-id: fault-F010" tabindex="0">
+            <div class="fault-card__id">F-010</div>
+            <div class="fault-card__layer">filesystem</div>
+            <p class="fault-card__symptom">App log deleted while running → only L-series fail (degraded)</p>
+            <p class="fault-card__detail">Failing: L-001, L-002, L-003 · Passing: S-001, P-001, P-002, E-001, E-002</p>
+            <span class="fault-card__reset">R1</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F013" tabindex="0">
+            <div class="fault-card__id">F-013</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">ExecStart=DOESNOTEXIST → app dead, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005 · Passing: S-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F014" tabindex="0">
+            <div class="fault-card__id">F-014</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">Apply returns error (binary rebuild needed). State stays CONFORMANT.</p>
+            <p class="fault-card__detail">No checks fail (no mutation occurred)</p>
+            <span class="fault-card__reset">R3</span>
+          </article>
+          <article class="fault-card" data-layer="proxy" style="--card-id: fault-F015" tabindex="0">
+            <div class="fault-card__id">F-015</div>
+            <div class="fault-card__layer">proxy</div>
+            <p class="fault-card__symptom">Invalid nginx directive → syntax error, old config still active</p>
+            <p class="fault-card__detail">Failing: F-005 only · Passing: S-003, P-003, P-004, E-001, E-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="network" style="--card-id: fault-F016" tabindex="0">
+            <div class="fault-card__id">F-016</div>
+            <div class="fault-card__layer">network</div>
+            <p class="fault-card__symptom">App binds 0.0.0.0:8080 → missing X-Proxy header, direct access works</p>
+            <p class="fault-card__detail">Failing: P-002 only · Passing: S-001, E-001, E-002, E-003, E-004</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F017" tabindex="0">
+            <div class="fault-card__id">F-017</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">APP_ENV set to empty → app fails startup, all endpoints fail</p>
+            <p class="fault-card__detail">Failing: S-001, E-001, E-002, E-003, E-004, E-005 · Passing: F-002, F-001</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="filesystem" style="--card-id: fault-F018" tabindex="0">
+            <div class="fault-card__id">F-018</div>
+            <div class="fault-card__layer">filesystem</div>
+            <p class="fault-card__symptom">Inode exhaustion → 500 on root, df -i 100%</p>
+            <p class="fault-card__detail">Failing: E-002, F-004 · Passing: S-001, E-001, E-003</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="filesystem" style="--card-id: fault-F019" tabindex="0">
+            <div class="fault-card__id">F-019</div>
+            <div class="fault-card__layer">filesystem</div>
+            <p class="fault-card__symptom">Block exhaustion → 500 on root, df -h 100%</p>
+            <p class="fault-card__detail">Failing: E-002, F-004 · Passing: S-001, E-001, E-003</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="service" style="--card-id: fault-F020" tabindex="0">
+            <div class="fault-card__id">F-020</div>
+            <div class="fault-card__layer">service</div>
+            <p class="fault-card__symptom">CHAOS_LATENCY_MS=400 → ~400ms response delay, no check failures</p>
+            <p class="fault-card__detail">No checks fail (chaos latency only — observable via timing)</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+          <article class="fault-card" data-layer="network" style="--card-id: fault-F021" tabindex="0">
+            <div class="fault-card__id">F-021</div>
+            <div class="fault-card__layer">network</div>
+            <p class="fault-card__symptom">nftables drop on port 8080 → 502/504 via proxy, direct access works</p>
+            <p class="fault-card__detail">Failing: E-001, E-002, E-003, E-004, E-005 · Passing: S-001, P-001, P-002</p>
+            <span class="fault-card__reset">R2</span>
+          </article>
+        </div>
+
+        <p class="fault-grid-note">
+          Showing <span class="filter-count-inline">19</span> of 19 faults
+        </p>
+      </div>
+    </section>
+
+    <!-- C-S4 Conformance -->
+    <section aria-labelledby="s4-heading" class="section-light">
+      <div class="container">
+        <span class="eyebrow">§ 4 — Conformance</span>
+        <h2 id="s4-heading">
+          25 automated checks across six domains. Each check is a single HTTP request.
+        </h2>
+        <p>
+          Nothing needs to be installed inside the lab. The check framework runs
+          directly against the live system, testing every layer from cgroup to proxy
+          to application.
+        </p>
+
+        <!-- C-10 Check rows — 25 checks -->
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">S-001</span><span class="check-row__desc">app.service is active</span><span class="check-row__series" aria-label="S series">S</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">S-002</span><span class="check-row__desc">app.service is enabled</span><span class="check-row__series" aria-label="S series">S</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">S-003</span><span class="check-row__desc">nginx is active</span><span class="check-row__series" aria-label="S series">S</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">S-004</span><span class="check-row__desc">nginx is enabled</span><span class="check-row__series" aria-label="S series">S</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">P-001</span><span class="check-row__desc">Process 'server' running as 'appuser'</span><span class="check-row__series" aria-label="P series">P</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">P-002</span><span class="check-row__desc">App listens on 127.0.0.1:8080</span><span class="check-row__series" aria-label="P series">P</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">P-003</span><span class="check-row__desc">nginx listens on 0.0.0.0:80</span><span class="check-row__series" aria-label="P series">P</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">P-004</span><span class="check-row__desc">nginx listens on 0.0.0.0:443</span><span class="check-row__series" aria-label="P series">P</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">E-001</span><span class="check-row__desc">GET /health returns 200</span><span class="check-row__series" aria-label="E series">E</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">E-002</span><span class="check-row__desc">GET / returns 200</span><span class="check-row__series" aria-label="E series">E</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">E-003</span><span class="check-row__desc">/health body contains "status":"ok"</span><span class="check-row__series" aria-label="E series">E</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">E-004</span><span class="check-row__desc">Response includes X-Proxy: nginx header</span><span class="check-row__series" aria-label="E series">E</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">E-005</span><span class="check-row__desc">GET https://app.local/health returns 200</span><span class="check-row__series" aria-label="E series">E</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">H-001</span><span class="check-row__desc">/headers returns Host header</span><span class="check-row__series" aria-label="H series">H</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">H-002</span><span class="check-row__desc">/reset causes TCP RST</span><span class="check-row__series" aria-label="H series">H</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-001</span><span class="check-row__desc">/opt/app/server exists, mode 750, owned appuser:appuser</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-002</span><span class="check-row__desc">/etc/app/config.yaml exists, mode 640, owned appuser:appuser</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-003</span><span class="check-row__desc">/var/log/app/ exists, mode 755, owned appuser:appuser</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-004</span><span class="check-row__desc">/var/lib/app/ exists, mode 755, owned appuser:appuser</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-005</span><span class="check-row__desc">nginx config passes syntax check</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-006</span><span class="check-row__desc">TLS certificate exists and has not expired</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">F-007</span><span class="check-row__desc">app.local resolves to 127.0.0.1</span><span class="check-row__series" aria-label="F series">F</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">L-001</span><span class="check-row__desc">/var/log/app/app.log exists and is non-empty</span><span class="check-row__series" aria-label="L series">L</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">L-002</span><span class="check-row__desc">Last line of app.log is valid JSON</span><span class="check-row__series" aria-label="L series">L</span></div>
+        <div class="check-row"><span class="check-row__icon check-row__icon--pass" aria-label="Pass">✓</span><span class="check-row__id">L-003</span><span class="check-row__desc">app.log contains a startup entry</span><span class="check-row__series" aria-label="L series">L</span></div>
+
+        <!-- C-11 Verdict bar -->
+        <div class="verdict" role="status" aria-live="polite">
+          <span class="verdict__label">CONFORMANT</span>
+          <span class="verdict__count verdict__count--pass">25/25 ✓</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- C-S5 Lab at a glance -->
+    <section aria-labelledby="s5-heading" class="section-light">
+      <div class="container">
+        <span class="eyebrow">§ 5 — Lab at a glance</span>
+        <h2 id="s5-heading">
+          Five commands that cover every operation.
+        </h2>
+        <p>
+          status, validate, fault apply, reset, and history — the entire surface
+          of the lab. No hidden subcommands.
+        </p>
+
+        <!-- C-12 Command table -->
+        <div class="cmd-table" aria-label="Lab CLI commands">
+          <div class="cmd-row">
+            <span class="cmd-row__name">lab status</span>
+            <span class="cmd-row__desc">only reconciler — reads + writes state.json</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-row__name">lab validate</span>
+            <span class="cmd-row__desc">observation only — never updates state</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-row__name">lab fault apply</span>
+            <span class="cmd-row__desc">inject a fault by ID</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-row__name">lab reset</span>
+            <span class="cmd-row__desc">restore to conformant — R1 / R2 / R3</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-row__name">lab history</span>
+            <span class="cmd-row__desc">ring buffer of state transitions</span>
+          </div>
+        </div>
+
+        <!-- C-13 Tech badges -->
+        <ul class="tech-row" aria-label="Technologies used">
+          <li class="tech-badge">Go</li>
+          <li class="tech-badge">systemd</li>
+          <li class="tech-badge">nginx</li>
+          <li class="tech-badge">cgroup v2</li>
+          <li class="tech-badge">nftables</li>
+          <li class="tech-badge">Ubuntu 22.04</li>
+          <li class="tech-badge">ext4 loopback</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- C-S6 Engineering -->
+    <section aria-labelledby="s6-heading" class="section-light">
+      <div class="container">
+        <span class="eyebrow">§ 6 — Engineering</span>
+        <h2 id="s6-heading">
+          199 test functions, 47 test files, and 3 semantic models.
+        </h2>
+        <p>
+          The lab is as much about teaching correctness as it is about breaking things.
+          Every state transition is verified against the spec before it ships.
+        </p>
+
+        <!-- C-14 Stat cards -->
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-card__n">199</span>
+            <span class="stat-card__l">test functions</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__n">47</span>
+            <span class="stat-card__l">test files</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__n">9</span>
+            <span class="stat-card__l">recovery drills</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__n">3</span>
+            <span class="stat-card__l">semantic models</span>
+          </div>
+        </div>
+
+        <!-- C-20 Blog list -->
+        <div class="blog-list">
+          <h3 class="blog-list__heading">Writing about the lab</h3>
+          <ul class="blog-list__items">
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/zero-to-systems-programming-chaos-engineering" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Zero to Systems Programming Chaos Engineering</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/wrote-specifications-before-code" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Wrote Specifications Before Code</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/write-does-not-write-to-disk" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Write Does Not Write to Disk</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/two-interface-pattern-chaos-engineering" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Two Interface Pattern Chaos Engineering</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/tls-timeouts-production-traps" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">TLS Timeouts Production Traps</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/tests-are-not-a-safety-net" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Tests Are Not a Safety Net</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/state-management-conflict-resolution-chaos-engineering" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">State Management Conflict Resolution Chaos Engineering</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/six-more-linux-traps" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Six More Linux Traps</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/security-failures-incorrect-trust-decisions" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Security Failures Incorrect Trust Decisions</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/os-mental-model-performance-debugging" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">OS Mental Model Performance Debugging</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/linux-is-a-state-machine" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Linux Is a State Machine</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/five-linux-filesystem-facts-chaos-engineering" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Five Linux Filesystem Facts Chaos Engineering</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/connection-lifecycle-model-network-debugging" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Connection Lifecycle Model Network Debugging</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/binary-should-carry-its-own-source-of-truth" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Binary Should Carry Its Own Source of Truth</span>
+              </a>
+            </li>
+            <li class="blog-list__item">
+              <a href="https://fleshedoutthoughts.com/notes/attack-surface-you-build-without-knowing-it" class="blog-list__link" target="_blank" rel="noopener noreferrer">
+                <span class="blog-list__title">Attack Surface You Build Without Knowing It</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- C-16 Get started -->
+    <section aria-labelledby="s7-heading" class="get-started">
+      <div class="container">
+        <span class="eyebrow eyebrow--dark">§ 7 — Get started</span>
+        <h2 id="s7-heading">One command to a working lab.</h2>
+        <p class="get-started__sub">
+          Ubuntu 22.04 VM with cgroup v2.
+          Clone, bootstrap, conformant in under five minutes.
+        </p>
+
+        <!-- C-15 Code blocks -->
+        <div class="code-cols">
+          <div>
+            <p class="code-label">Bootstrap</p>
+            <div class="code-block">
+              <span class="cb-cmd">git clone github.com/…/lab_env /opt/lab-env</span><br>
+              <span class="cb-cmd">cd /opt/lab-env</span><br>
+              <span class="cb-cmd">sudo bash scripts/bootstrap.sh</span><br>
+              <span class="cb-ok">CONFORMANT  25/25 checks passed</span>
+            </div>
+          </div>
+          <div>
+            <p class="code-label">First fault</p>
+            <div class="code-block">
+              <span class="cb-cmd">sudo lab fault apply F-004</span><br>
+              <span class="cb-cmd">curl http://localhost/</span><br>
+              <span class="cb-err">{"status":"error","msg":"state write failed"}</span><br>
+              <span class="cb-cmd">sudo lab reset</span>
+            </div>
+          </div>
+        </div>
+
+        <a href="https://github.com/FleshedOutThoughts69/lab_env"
+           class="cta cta--block cta--clipboard"
+           target="_blank" rel="noopener noreferrer">
+          Deploy the lab
+        </a>
+        <p class="get-started__note">
+          Remaining aspirational features tracked in
+          <a href="https://github.com/FleshedOutThoughts69/lab_env/blob/main/project-docs/remaining-features.md"
+             target="_blank" rel="noopener noreferrer">
+            project-docs/remaining-features.md
+          </a>
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- C-18 Footer -->
+  <footer role="contentinfo" class="footer">
+    <div class="container footer__inner">
+
+      <a href="#main" class="footer__logo"
+         aria-label="lab_env — scroll back to top">
+        lab<span>_env</span>
+      </a>
+
+      <nav class="footer__links" aria-label="Footer links">
+        <a href="https://github.com/FleshedOutThoughts69/lab_env"
+           class="footer__link"
+           target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+        <a href="https://github.com/FleshedOutThoughts69/lab_env/blob/main/project-docs/remaining-features.md"
+           class="footer__link"
+           target="_blank" rel="noopener noreferrer">remaining-features.md ↗</a>
+        <a href="https://github.com/FleshedOutThoughts69/lab_env/blob/main/LICENSE"
+           class="footer__link"
+           target="_blank" rel="noopener noreferrer">Apache License ↗</a>
+      </nav>
+
+      <p class="footer__copy">© 2025 lab_env · No frameworks</p>
+
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
