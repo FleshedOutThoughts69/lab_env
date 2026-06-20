@@ -11,8 +11,8 @@
 **Required changes (all mandatory — missing any is a completeness violation):**
 
 1. `internal/catalog/faults.go` — new `faultFNNN() *FaultImpl`; `Def *FaultDef` all fields; Apply/Recover via Executor only
-2. `internal/catalog/catalog_test.go` — increment expected count in `TestAllImpls_Has16Faults` and `TestAllDefs_Has16Defs`; add new fault ID to the expected list in `TestFaultIDs_SequentialWithGap`
-3. `internal/invariants/invariants_test.go` — increment expected count in `TestInvariant_16FaultsInCatalog`
+2. `internal/catalog/catalog_test.go` — increment expected count in `TestAllImpls_Has19Faults` and `TestAllDefs_Has19Defs`; add new fault ID to the expected list in `TestFaultIDs_SequentialWithGap` (current list: F‑001–F‑007, F‑009, F‑010, F‑013, F‑015–F‑021; gaps at F‑011/F‑012 are intentional baseline‑behaviour placeholders)
+3. `internal/invariants/invariants_test.go` — increment expected count in `TestInvariant_19FaultsInCatalog`
 4. `fault-model.md §7.2` — full catalog entry with FailingChecks and PassingChecks
 5. `conformance-model.md §3` — add fault ID to `Maps to` field of every check in FailingChecks
 6. `canonical-environment.md §7` — consistent entry (same version, same postcondition)
@@ -23,8 +23,8 @@
 
 | Skipped step | Failing test |
 |---|---|
-| Step 1 (no faultFNNN) | `TestAllImpls_Has16Faults`, `TestAllDefs_Has16Defs` |
-| Step 2 count constants | `TestAllImpls_Has16Faults`, `TestAllDefs_Has16Defs`, `TestInvariant_16FaultsInCatalog` |
+| Step 1 (no faultFNNN) | `TestAllImpls_Has19Faults`, `TestAllDefs_Has19Defs` |
+| Step 2 count constants | `TestAllImpls_Has19Faults`, `TestAllDefs_Has19Defs`, `TestInvariant_19FaultsInCatalog` |
 | Step 2 ID list | `TestFaultIDs_SequentialWithGap` |
 | Step 1 Def fields | `TestAllDefs_RequiredFieldsPresent` |
 | Step 1 Preconditions | `TestAllFaults_HavePreconditions` |
@@ -44,19 +44,19 @@
 
 **Required changes:**
 
-1. `internal/conformance/catalog.go` — new `Check` in correct series position; Execute uses Observer only
-2. `internal/conformance/runner_test.go` and `internal/invariants/invariants_test.go` — increment expected count in `TestCatalog_Has23Checks` and `TestInvariant_23ChecksInConformanceCatalog`
-3. `conformance-model.md §3` — full check entry including ID, layer, category, severity, assertion, failure meaning, observable command, and `Maps to` field. The `Maps to` field update alone is insufficient; the check's complete specification must be present before the implementation is committed.
+1. `internal/conformance/catalog.go` — new `Check` in correct series position; Execute uses Observer only. (Current series: S‑001–S‑004, P‑001–P‑004, E‑001–E‑005, F‑001–F‑007, H‑001–H‑002, L‑001–L‑003; new checks should extend the appropriate series or be placed in a new H‑ or other series.)
+2. `internal/conformance/runner_test.go` and `internal/invariants/invariants_test.go` — increment expected count in `TestCatalog_Has25Checks` and `TestInvariant_25ChecksInConformanceCatalog`
+3. `conformance-model.md §3` — full check entry including ID, layer, category, severity, assertion, failure meaning, observable command, and `Maps to` field
 4. `system-state-model.md §6` — update state-to-check mapping table
 5. `fault-model.md` — update FailingChecks of any fault whose Apply affects this check
-6. `docs/golden-baseline-ledger.md §III` — add check ID to frozen list; update count if changed
+6. `docs/golden-baseline-ledger.md §III` — add check ID to frozen list; update count
 7. `testdata/golden/` — regenerate golden fixtures: `UPDATE_GOLDEN=1 go test ./internal/output/...`
 
 **Tests that will fail:**
 
 | Change | Failing test |
 |---|---|
-| Count not updated (step 2) | `TestInvariant_23ChecksInConformanceCatalog`, `TestCatalog_Has23Checks` |
+| Count not updated (step 2) | `TestInvariant_25ChecksInConformanceCatalog`, `TestCatalog_Has25Checks` |
 | Severity wrong | `TestCatalog_SeverityDistribution` |
 | ID not unique | `TestCatalog_UniqueIDs` |
 | No Execute func | `TestCatalog_AllHaveExecute` |
@@ -130,7 +130,7 @@
 | State name | Breaking change. Version increment + migration path required. |
 | Check ID | Breaking change. Do not renumber existing IDs. |
 | Check severity | Run `UPDATE_GOLDEN=1 go test ./internal/output/...` to regenerate all golden fixtures. Update `conformance-model.md §3.1` severity field. Verify `TestCatalog_SeverityDistribution` still reflects intended distribution. |
-| Fault ID | Breaking change. Do not renumber existing IDs. New faults use next sequential ID. |
+| Fault ID | Breaking change. Do not renumber existing IDs. New faults use next sequential ID. (Current catalog: F‑001–F‑007, F‑009, F‑010, F‑013, F‑015–F‑021; F‑011/F‑012 are permanently absent as baseline behaviour placeholders.) |
 | Audit entry_type | Add only. Do not remove or rename existing values. See "Adding a New Audit Entry Type" below. |
 
 **Regenerating golden fixtures:** any change to JSON output structure or check severity requires regenerating the golden fixtures in `testdata/golden/`. Run:

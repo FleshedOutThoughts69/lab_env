@@ -1,5 +1,5 @@
 # Golden Baseline Ledger
-## Version 1.0.0
+## Version 1.0.0 (revised)
 
 > Contract index only. Lists what is frozen, what is unfrozen, and why.
 > Consult before modifying any output, schema, or fixture file.
@@ -16,6 +16,7 @@
 | `active_fault` | object\|null | ✓ | **explicit null** when no fault — never absent |
 | `active_fault.id` | string | ✓ | |
 | `active_fault.applied_at` | RFC3339 | ✗ | timestamp — not frozen |
+| `classification_valid` | bool | ✓ | Added after interrupt recovery; always present |
 | `services` | object | ✓ | keys are service names |
 | `services.<name>.active` | bool | ✓ | |
 | `services.<name>.pid` | int | ✗ | not frozen |
@@ -43,7 +44,7 @@ Fixtures: `testdata/golden/status_conformant.json`, `status_degraded.json`, `sta
 | Field | Type | Stable | Notes |
 |---|---|---|---|
 | `at` | RFC3339 | ✗ | not frozen |
-| `checks` | array | ✓ | 23 entries |
+| `checks` | array | ✓ | 25 entries |
 | `checks[].id` | string | ✓ | check ID (S-NNN etc) |
 | `checks[].assertion` | string | ✓ | |
 | `checks[].passed` | bool | ✓ | |
@@ -51,7 +52,7 @@ Fixtures: `testdata/golden/status_conformant.json`, `status_degraded.json`, `sta
 | `checks[].dependent` | bool | ✓ | omitted when false |
 | `checks[].error` | string | ✓ | omitted when passed |
 | `passed` | int | ✓ | |
-| `total` | int | ✓ | always 23 |
+| `total` | int | ✓ | always 25 |
 | `classification` | string | ✓ | "CONFORMANT"\|"CONFORMANT (degraded)"\|"NON-CONFORMANT" |
 | `failing_checks` | []string\|null | ✓ | explicit null when empty |
 
@@ -96,6 +97,49 @@ Note: prose fields (`mutation`, `symptom`, etc.) are present in the schema but t
 
 ---
 
+### FaultListResult (`lab fault list --json`)
+
+| Field | Type | Stable |
+|---|---|---|
+| `total` | int | ✓ |
+| `faults` | array | ✓ |
+
+Schema drift lock test exists (`TestGolden_FaultListResult_NoExtraFields`). No golden fixture file yet.
+
+---
+
+### ResetResult (`lab reset --json`)
+
+| Field | Type | Stable |
+|---|---|---|
+| `tier` | string | ✓ |
+| `from_state` | string | ✓ |
+| `to_state` | string | ✓ |
+| `fault_cleared` | string | ✓ |
+| `validation_ran` | bool | ✓ |
+| `duration_ms` | int64 | ✗ |
+
+Schema drift lock test exists (`TestGolden_ResetResult_NoExtraFields`). No golden fixture file yet.
+
+---
+
+### HistoryResult (`lab history --json`)
+
+| Field | Type | Stable |
+|---|---|---|
+| `total` | int | ✓ |
+| `entries` | array | ✓ |
+| `entries[].ts` | RFC3339 | ✗ |
+| `entries[].from` | string | ✓ |
+| `entries[].to` | string | ✓ |
+| `entries[].command` | string | ✓ |
+| `entries[].fault` | string | ✓ |
+| `entries[].forced` | bool | ✓ |
+
+Schema drift lock test exists (`TestGolden_HistoryResult_NoExtraFields`). No golden fixture file yet.
+
+---
+
 ### AuditEntry (individual entry schema — the log as a whole is never frozen)
 
 | Field | Type | Stable |
@@ -129,13 +173,18 @@ Frozen entry_type values: `executor_op`, `state_transition`, `validation_run`, `
 
 ## III. Frozen Conformance Catalog
 
-**Count:** 23 checks. Any addition requires spec + test update.
+**Count:** 25 checks. Any addition requires spec + test update.
 
 **Frozen check IDs:**
 S-001, S-002, S-003, S-004, P-001, P-002, P-003, P-004,
 E-001, E-002, E-003, E-004, E-005,
 F-001, F-002, F-003, F-004, F-005, F-006, F-007,
-L-001, L-002, L-003
+L-001, L-002, L-003,
+**H-001**, **H-002**
+
+**New checks:**
+- **H-001** — `/headers` returns `Host` header (endpoint, blocking). Added for the `/headers` endpoint.
+- **H-002** — `/reset` causes connection reset (endpoint, blocking). Added for the `/reset` endpoint.
 
 **Frozen severity assignments:**
 
@@ -150,7 +199,7 @@ L-001, L-002, L-003
 
 ## IV. Frozen Fault Catalog
 
-**Count:** 16 faults. F-011 and F-012 are baseline network behaviours (fault-model.md §10) and are not in the fault catalog.
+**Count:** 19 faults. F-011 and F-012 are baseline network behaviours and are not in the fault catalog.
 
 | ID | Reversible | Reset tier | Requires confirmation |
 |---|---|---|---|
@@ -170,10 +219,16 @@ L-001, L-002, L-003
 | F-016 | ✓ | R2 | no |
 | F-017 | ✓ | R2 | no |
 | F-018 | ✓ | R2 | no |
+| **F-019** | ✓ | R2 | no |
+| **F-020** | ✓ | R2 | no |
+| **F-021** | ✓ | R2 | no |
+
+**New faults:**
+- **F-019** — block exhaustion (`dd` fills `/var/lib/app`). Reversible, R2.
+- **F-020** — chaos latency (`CHAOS_LATENCY_MS=400` in chaos.env). Reversible, R2.
+- **F-021** — nftables drop rule (`iif enp0s8 tcp dport 8080 drop`). Reversible, R2.
 
 **Not frozen:** symptom prose, observable prose, mutation display prose.
-
-**Note:** F-011 and F-012 previously appeared in this table as baseline entries. They have been reclassified as baseline network behaviours and removed from the fault catalog. See fault-model.md §10 (Appendix: Baseline Network Behaviours).
 
 ---
 
@@ -197,11 +252,11 @@ Never add assertions on these:
 | `duration_ms` | Non-deterministic |
 | `pid` values | Non-deterministic |
 | `last_status_at` in state.json | Changes on every status call |
-| Human-readable CLI output prose | Implementation-defined (control-plane-contract §2.3) |
+| Human-readable CLI output prose | Implementation-defined |
 | Terminal colors, column alignment | Cosmetic |
 | Exact error message text | Semantic minimum frozen, full prose not |
 | Audit log total line count | Grows with usage |
-| Internal executor call ordering | Provided guarantees met; order is not frozen |
+| Internal executor call ordering | Provided guarantees met; order not frozen |
 | History ring buffer size | Owned by control-plane-contract §6.1 |
 
 ---
@@ -216,3 +271,6 @@ Never add assertions on these:
 3. Run `UPDATE_GOLDEN=1 go test ./internal/output/...`
 4. Update the relevant rows in this ledger
 5. Verify `go test ./...` passes
+
+---
+

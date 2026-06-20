@@ -92,7 +92,7 @@ Every check in the catalog conforms to this schema:
 | Field | Type | Description |
 |---|---|---|
 | **ID** | string | Unique identifier in format `{CATEGORY}-{NNN}` |
-| **Category** | enum | `S` (system state), `P` (process), `E` (endpoint), `F` (filesystem), `L` (log) |
+| **Category** | enum | `S` (system state), `P` (process), `E` (endpoint), `F` (filesystem), `L` (log), `H` (HTTP contract) |
 | **Layer** | enum | `behavioral`, `structural`, `operational` |
 | **Severity** | enum | `blocking` (failure contributes NON-CONFORMANT per Rule V-3) or `degraded` (failure contributes DEGRADED-CONFORMANT per Rule V-2). The authoritative mapping from severity to verdict is §4.1. |
 | **Assertion** | string | The condition that must be true for the check to pass |
@@ -102,7 +102,7 @@ Every check in the catalog conforms to this schema:
 
 The `Maps to` field enforces the bidirectional completeness condition (§5): every check maps to at least one state, transition, or fault in the other model documents.
 
-**Namespace note:** check IDs and fault IDs share the `F-NNN` prefix for the filesystem check series (F-001 through F-007) and the fault catalog (F-001 through F-018). These are distinct namespaces. In `Maps to` fields, identifiers of the form `F-NNN` always refer to **fault catalog entries** from `fault-model.md` §7, never to check IDs. Check IDs are always referenced by their full category-prefixed form (S-NNN, P-NNN, E-NNN, F-NNN, L-NNN) within check-to-check cross-references, which do not appear in this catalog.
+**Namespace note:** check IDs and fault IDs share the `F-NNN` prefix for the filesystem check series (F-001 through F-007) and the fault catalog (F-001 through F-021). These are distinct namespaces. In `Maps to` fields, identifiers of the form `F-NNN` always refer to **fault catalog entries** from `fault-model.md` §7, never to check IDs. Check IDs are always referenced by their full category-prefixed form (S-NNN, P-NNN, E-NNN, F-NNN, L-NNN, H-NNN) within check-to-check cross-references, which do not appear in this catalog.
 
 ### 3.2 Cross-Reference Definitions
 
@@ -115,9 +115,9 @@ The `Maps to` field in the check schema references states and faults defined in 
 - **RECOVERING** — the recorded state during a reset operation. Transient; not directly produced by check results.
 - **UNPROVISIONED** / **PROVISIONED** — pre-operational states. No checks map to these.
 
-**Fault IDs** (defined authoritatively in `fault-model.md` §7): `F-001` through `F-018` in the `Maps to` field identify specific faults whose application is evidenced by a failing check. A check listing fault `F-NNN` in its `Maps to` field means: "if this check fails, fault F-NNN may be active, or the fault's mutation may have been applied without going through `lab fault apply`."
+**Fault IDs** (defined authoritatively in `fault-model.md` §7): `F-001` through `F-021` in the `Maps to` field identify specific faults whose application is evidenced by a failing check. A check listing fault `F-NNN` in its `Maps to` field means: "if this check fails, fault F-NNN may be active, or the fault's mutation may have been applied without going through `lab fault apply`."
 
-**Namespace disambiguation:** as noted in §3.1, check IDs in the filesystem series (F-001 through F-007) and fault IDs (F-001 through F-018) share the `F-NNN` prefix. In `Maps to` fields, all `F-NNN` identifiers refer to **faults**, never checks. This is the only location where fault IDs and check IDs could be confused; all other cross-references use the full context to disambiguate.
+**Namespace disambiguation:** as noted in §3.1, check IDs in the filesystem series (F-001 through F-007) and fault IDs (F-001 through F-021) share the `F-NNN` prefix. In `Maps to` fields, all `F-NNN` identifiers refer to **faults**, never checks. This is the only location where fault IDs and check IDs could be confused; all other cross-references use the full context to disambiguate.
 
 ### 3.3 System State Checks (S-series)
 
@@ -147,11 +147,11 @@ These checks verify the behavioral contract of the HTTP interface. They are the 
 
 | ID | Layer | Severity | Assertion | Failure meaning | Observable command | Maps to |
 |---|---|---|---|---|---|---|
-| **E-001** | behavioral | blocking | `GET /health` returns HTTP 200 | App is not serving health checks; process may be running but not functional | `curl -sf http://localhost/health > /dev/null` | BROKEN, F-001, F-002, F-003, F-005, F-006, F-007, F-009, F-013, F-017 |
-| **E-002** | behavioral | blocking | `GET /` returns HTTP 200 | Primary request path is failing | `curl -sf http://localhost/ > /dev/null` | BROKEN, F-004, F-018 |
-| **E-003** | behavioral | blocking | `/health` body contains `"status":"ok"` | App is responding but not confirming config loaded | `curl -s http://localhost/health \| jq -e '.status == "ok"' > /dev/null` | BROKEN |
-| **E-004** | behavioral | blocking | Response includes `X-Proxy: nginx` header | nginx is not proxying — traffic reaching app directly or response from wrong source | `curl -sI http://localhost/ \| grep -q 'X-Proxy: nginx'` | BROKEN, F-007 |
-| **E-005** | behavioral | blocking | `GET https://app.local/health` returns 200 (skip verify) | TLS listener or upstream not functioning | `curl -skf https://app.local/health > /dev/null` | BROKEN, F-015 |
+| **E-001** | behavioral | blocking | `GET /health` returns HTTP 200 | App is not serving health checks; process may be running but not functional | `curl -sf http://localhost/health > /dev/null` | BROKEN, F-001, F-002, F-003, F-005, F-006, F-007, F-009, F-013, F-017, F-021 |
+| **E-002** | behavioral | blocking | `GET /` returns HTTP 200 | Primary request path is failing | `curl -sf http://localhost/ > /dev/null` | BROKEN, F-004, F-018, F-019 |
+| **E-003** | behavioral | blocking | `/health` body contains `"status":"ok"` | App is responding but not confirming config loaded | `curl -s http://localhost/health \| jq -e '.status == "ok"' > /dev/null` | BROKEN, F-021 |
+| **E-004** | behavioral | blocking | Response includes `X-Proxy: nginx` header | nginx is not proxying — traffic reaching app directly or response from wrong source | `curl -sI http://localhost/ \| grep -q 'X-Proxy: nginx'` | BROKEN, F-007, F-021 |
+| **E-005** | behavioral | blocking | `GET https://app.local/health` returns 200 (skip verify) | TLS listener or upstream not functioning | `curl -skf https://app.local/health > /dev/null` | BROKEN, F-015, F-021 |
 
 ### 3.6 Filesystem Checks (F-series)
 
@@ -162,7 +162,7 @@ These checks verify structural conformance — canonical ownership, modes, and c
 | **F-001** | structural | blocking | `/opt/app/server` exists, owned `appuser:appuser`, mode `750` | Binary missing, wrong ownership, or not executable | `stat -c '%U:%G %a' /opt/app/server \| grep -q 'appuser:appuser 750'` | BROKEN, F-005 |
 | **F-002** | structural | blocking | `/etc/app/config.yaml` exists, owned `appuser:appuser`, mode `640` | Config missing, wrong ownership, or unreadable by appuser | `stat -c '%U:%G %a' /etc/app/config.yaml \| grep -q 'appuser:appuser 640'` | BROKEN, F-001, F-003 |
 | **F-003** | structural | blocking | `/var/log/app/` exists, owned `appuser:appuser`, mode `755` | Log directory missing or wrong permissions | `stat -c '%U:%G %a' /var/log/app \| grep -q 'appuser:appuser 755'` | BROKEN, F-009 |
-| **F-004** | structural | blocking | `/var/lib/app/` exists, owned `appuser:appuser`, mode `755` | State directory missing or wrong permissions — `/` will return 500 | `stat -c '%U:%G %a' /var/lib/app \| grep -q 'appuser:appuser 755'` | BROKEN, F-004, F-018 |
+| **F-004** | structural | blocking | `/var/lib/app/` exists, owned `appuser:appuser`, mode `755` | State directory missing or wrong permissions — `/` will return 500 | `stat -c '%U:%G %a' /var/lib/app \| grep -q 'appuser:appuser 755'` | BROKEN, F-004, F-018, F-019 |
 | **F-005** | structural | blocking | nginx configuration passes syntax check | nginx config has syntax error; nginx will not reload | `nginx -t 2>/dev/null` | BROKEN, F-015 |
 | **F-006** | structural | degraded | TLS certificate exists and has not expired | HTTPS will fail; certificate requires renewal | `openssl x509 -checkend 0 -noout -in /etc/nginx/tls/app.local.crt` | BROKEN |
 | **F-007** | structural | blocking | `app.local` resolves to `127.0.0.1` | TLS hostname resolution broken; HTTPS problems will be misattributed | `getent hosts app.local \| grep -q '127.0.0.1'` | BROKEN |
@@ -176,6 +176,15 @@ These checks verify that the application's log output is present and structured 
 | **L-001** | operational | degraded | `/var/log/app/app.log` exists and is non-empty | No log output — app may not be logging, or log file was deleted | `test -s /var/log/app/app.log` | BROKEN, F-009, F-010 |
 | **L-002** | operational | degraded | Last line of `app.log` is valid JSON | Log is corrupted or format has changed | `tail -1 /var/log/app/app.log \| jq . > /dev/null 2>&1` | BROKEN, F-009 |
 | **L-003** | operational | degraded | `app.log` contains a startup entry | App started but startup log was not produced — logging failure | `grep -q '"msg":"server started"' /var/log/app/app.log` | BROKEN, F-009 |
+
+### 3.8 HTTP Contract Checks (H-series)
+
+These checks verify the behavioral contract of the additional HTTP endpoints added to the service. They are behavioral checks with semantic authority.
+
+| ID | Layer | Severity | Assertion | Failure meaning | Observable command | Maps to |
+|---|---|---|---|---|---|---|
+| **H-001** | behavioral | blocking | `GET /headers` returns the `Host` header | Proxy headers not propagated; nginx may be bypassed | `curl -s http://localhost/headers \| jq -e '.Host != ""'` | BROKEN |
+| **H-002** | behavioral | blocking | `GET /reset` causes a connection reset (TCP RST) | TCP RST not sent; SO_LINGER may not be set correctly | `curl -s http://localhost/reset; test $? -eq 56` | BROKEN |
 
 ---
 
@@ -259,13 +268,13 @@ Every validation run MUST produce a structured output record. This document defi
 |---|---|---|
 | **verdict** | enum | One of: `CONFORMANT`, `DEGRADED-CONFORMANT`, `NON-CONFORMANT`. Derived per Rules V-1 through V-3 (§4.1). |
 | **at** | RFC3339 timestamp | The moment the validation snapshot was taken. All check results reflect this moment. |
-| **checks** | array | One result record per check in the catalog. Exactly 23 entries. Order follows catalog order (S → P → E → F → L). |
+| **checks** | array | One result record per check in the catalog. Exactly 25 entries. Order follows catalog order (S → P → E → F → L → H). |
 | **checks[].id** | string | Check ID (e.g., `S-001`). |
 | **checks[].passed** | bool | `true` if the observable command exited 0; `false` otherwise. |
 | **checks[].severity** | enum | `blocking` or `degraded`. Copied from the check schema; not recomputed. |
 | **checks[].dependent** | bool | `true` if this check failed as a consequence of a higher-authority check failure, not independently. Omitted when `false`. |
 | **passed** | int | Count of checks with `passed: true`. |
-| **total** | int | Total check count. Always 23 in this version. |
+| **total** | int | Total check count. Always 25 in this version. |
 | **failing_checks** | []string | IDs of checks with `passed: false` and `dependent: false`. Null when empty. Dependent failures are excluded. |
 
 The validation output MUST NOT update the `state` field in the state file. It MUST update `last_validate`. Only `lab status` is authorized to reconcile the authoritative state classification.
@@ -280,8 +289,9 @@ The conformance model is complete when the following bidirectional condition hol
 
 **Forward direction:** every system state, transition, and fault defined in `system-state-model.md` and `fault-model.md` maps to at least one check in this catalog (via the `Maps to` field of the check schema).
 
-**Exceptions to the forward direction (derived from `fault-model.md` §8):**
+**Exceptions to the forward direction (derived from `fault-model.md` §8 and §10):**
 - **F-008** (SIGTERM ignored) and **F-014** (zombie accumulation): these faults manifest only at shutdown or over time — no blocking conformance check fails while the app is running normally. They are verified by their `Observable` commands, not by the conformance suite.
+- **F-020** (CHAOS_LATENCY_MS=400): this fault introduces request latency but does not cause any conformance check to fail. It is verified via `time curl` and telemetry (`chaos_active=true`), not by the conformance suite.
 - **B-001** (nginx proxy timeout) and **B-002** (TLS certificate not in trust store): these are baseline network behaviours documented in `fault-model.md §10`. They are not faults and are not in the fault catalog; they are therefore not expected to appear in check `Maps to` fields.
 
 **Reverse direction:** every check in this catalog maps to at least one state, transition, or fault in `system-state-model.md` or `fault-model.md` (via the `Maps to` field).

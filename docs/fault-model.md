@@ -302,15 +302,15 @@ The reset tier is the fallback recovery path used by `lab reset`. It is independ
 
 The catalog is complete when:
 
-**Forward direction:** every fault maps to at least one conformance check ID in `FailingChecks`, with two permitted exceptions: F-008 and F-014, which manifest only at shutdown or over time and have empty `FailingChecks` by design (documented in §3.3 and §4.4).
+**Forward direction:** every fault maps to at least one conformance check ID in `FailingChecks`, with permitted exceptions for faults that are silent to the conformance suite by design (F‑008, F‑014, F‑020).
 
 **Reverse direction:** every conformance check in `conformance-model.md` §3 that has a non-empty `Maps to` field references at least one fault in this catalog.
 
-**Observability:** every fault has at least one `Observable` command that produces distinguishable output when the fault is active vs conformant. For F-008, the observable command is state-altering (documented exception in §3.3).
+**Observability:** every fault has at least one `Observable` command that produces distinguishable output when the fault is active vs conformant.
 
-**Apply/Recover:** every fault has a fully specified `Apply` and `Recover` step sequence in its catalog entry. For non-reversible faults (F-008, F-014), `Recover` is specified as returning an error directing to R3 reset.
+**Apply/Recover:** every fault has a fully specified `Apply` and `Recover` step sequence. Non‑reversible faults have `Recover` returning an error directing to R3.
 
-**Recovery:** every fault has a defined `ResetTier` (`R1`, `R2`, or `R3`). Baseline behaviors (§10 appendix) are not faults and do not have `ResetTier` values.
+**Recovery:** every fault has a defined `ResetTier` (`R1`, `R2`, or `R3`). Baseline behaviors (§10) are not faults and do not have `ResetTier` values.
 
 ### 7.2 Catalog Entries
 
@@ -484,9 +484,9 @@ The catalog is complete when:
 | Symptom | `sudo systemctl stop app` hangs for 90 seconds before systemd sends SIGKILL. App is running correctly during this period. |
 | AuthoritativeSignal | `systemctl status app` showing stop-sigterm → stop-sigkill transition |
 | Observable | `time sudo systemctl stop app` takes ~90 seconds; `journalctl -u app.service` shows `Sent signal SIGTERM` followed by `Sent signal SIGKILL` 90 seconds later; app serves requests normally during the wait |
-| **Behavioral postcondition** | App appears healthy to all endpoint checks during the fault. The fault only manifests at shutdown — `sudo systemctl stop app` takes ~90 seconds because SIGTERM is ignored and systemd must wait for the KillTimeout before sending SIGKILL. All conformance checks pass while the app is running. The fault is silent to `lab validate`. |
+| **Behavioral postcondition** | App appears healthy to all endpoint checks during the fault. The fault only manifests at shutdown — `sudo systemctl stop app` takes ~90 seconds because SIGTERM is ignored and systemd must wait for the KillTimeout before sending SIGKILL. All 25 conformance checks pass while the app is running. The fault is silent to `lab validate`. |
 | **Failing checks** | [] |
-| **Invariant checks** | All 23 checks pass while app is running |
+| **Invariant checks** | All 25 checks pass while app is running |
 | **Apply** | `exec.RunMutation("go", "build", "-ldflags", "-X main.FaultIgnoreSIGTERM=true", "-o", "/opt/app/server", "./service")` → `exec.Chown("/opt/app/server", "appuser", "appuser")` → `exec.Chmod("/opt/app/server", 0750)` → `exec.Systemctl("restart", "app.service")` |
 | **Recover** | Returns error: `"R3 reset required: run lab reset --tier R3 to rebuild the binary without the fault flag"`. MUST NOT attempt any system mutation. |
 
@@ -575,7 +575,7 @@ The catalog is complete when:
 | Observable | Zombie count increases with each `/` request; `pstree -p $(pgrep server)` shows zombie children; `ps aux \| grep -c ' Z '` grows over time |
 | **Behavioral postcondition** | App serves all endpoints correctly. Zombie accumulation is a resource leak (PID table slots) that grows with each `/` request. The fault is silent to `lab validate` until PID table exhaustion — at which point P-001 will fail, but this condition is not expected to be reached during normal lab exercises. |
 | **Failing checks** | [] |
-| **Invariant checks** | All 23 checks pass while PID table is not exhausted |
+| **Invariant checks** | All 25 checks pass while PID table is not exhausted |
 | **Apply** | `exec.RunMutation("go", "build", "-ldflags", "-X main.FaultZombieChildren=true", "-o", "/opt/app/server", "./service")` → `exec.Chown("/opt/app/server", "appuser", "appuser")` → `exec.Chmod("/opt/app/server", 0750)` → `exec.Systemctl("restart", "app.service")` |
 | **Recover** | Returns error: `"R3 reset required: run lab reset --tier R3 to rebuild the binary without the fault flag"`. MUST NOT attempt any system mutation. |
 
@@ -669,21 +669,88 @@ The catalog is complete when:
 
 ---
 
+**F-019 — Block exhaustion (disk full)**
+
+| Field | Value |
+|---|---|
+| Layer | `filesystem` |
+| Domain | `linux`, `os` |
+| RequiresConfirmation | false |
+| IsReversible | true |
+| ResetTier | R2 |
+| Preconditions | [CONFORMANT] |
+| PreconditionChecks | [] |
+| MutationDisplay | `dd if=/dev/zero of=/var/lib/app/fill bs=1M count=100` |
+| Symptom | The loopback mount is full. `GET /` returns 500; `GET /health` returns 200. `df -h` shows 100% usage. |
+| AuthoritativeSignal | `df -h /var/lib/app` |
+| Observable | `df -h /var/lib/app` — 100% usage; `curl -s localhost/` → `{"status":"error","msg":"state write failed"}`; `curl -s localhost/health` → `{"status":"ok"}`; `cat /run/app/status` → `Unhealthy` |
+| **Behavioral postcondition** | App is running but `/` fails because the state file cannot be written. `/health` continues to return 200. Status shows `Unhealthy`. Distinguishable from F-018 (inode exhaustion) by `df -h` showing full blocks vs `df -i` showing full inodes. |
+| **Failing checks** | E-002, F-004 |
+| **Invariant checks** | S-001, E-001, E-003 |
+| **Apply** | `exec.RunMutation("dd", "if=/dev/zero", "of=/var/lib/app/fill", "bs=1M", "count=100")` |
+| **Recover** | `exec.RunMutation("rm", "-f", "/var/lib/app/fill")` |
+
+---
+
+**F-020 — Chaos latency injection via chaos.env**
+
+| Field | Value |
+|---|---|
+| Layer | `service` |
+| Domain | `linux`, `networking` |
+| RequiresConfirmation | false |
+| IsReversible | true |
+| ResetTier | R2 |
+| Preconditions | [CONFORMANT] |
+| PreconditionChecks | [] |
+| MutationDisplay | Set `CHAOS_LATENCY_MS=400` in `/etc/app/chaos.env`; restart the service |
+| Symptom | All requests except `/health` are delayed by ~400ms. Telemetry shows `chaos_active=true` and `chaos_modes=["latency"]`. |
+| AuthoritativeSignal | `telemetry.json chaos_modes` + `time curl` |
+| Observable | `time curl -s http://localhost/ > /dev/null` — takes ≥400ms; `time curl -s http://localhost/health > /dev/null` — takes <50ms; `cat /run/app/telemetry.json \| jq '{chaos_active, chaos_modes}'` |
+| **Behavioral postcondition** | The service injects a fixed latency on every non‑`/health` request. Conformance checks continue to pass because the latency is within timeouts. The fault is observable via timing and telemetry, not via `lab validate`. |
+| **Failing checks** | [] (observable via timing and telemetry, not conformance) |
+| **Invariant checks** | All 25 checks pass while the fault is active |
+| **Apply** | 1. `exec.WriteFile(cfg.ChaosEnvPath, []byte("CHAOS_LATENCY_MS=400\n"), 0644, cfg.ServiceUser, cfg.ServiceGroup)`; 2. `exec.Systemctl("restart", "app.service")` |
+| **Recover** | 1. `exec.WriteFile(cfg.ChaosEnvPath, []byte{}, 0644, cfg.ServiceUser, cfg.ServiceGroup)`; 2. `exec.Systemctl("restart", "app.service")` |
+
+---
+
+**F-021 — nftables drop rule (network partition)**
+
+| Field | Value |
+|---|---|
+| Layer | `network` |
+| Domain | `linux`, `networking` |
+| RequiresConfirmation | false |
+| IsReversible | true |
+| ResetTier | R2 |
+| Preconditions | [CONFORMANT] |
+| PreconditionChecks | [] |
+| MutationDisplay | `nft add rule inet lab_filter LAB-FAULT iif enp0s8 tcp dport 8080 drop` |
+| Symptom | nginx cannot reach the app on port 8080. All proxied endpoints return 502. Direct loopback access to the app still works. |
+| AuthoritativeSignal | `nft list chain inet lab_filter LAB-FAULT` + `curl` |
+| Observable | `sudo nft list chain inet lab_filter LAB-FAULT` — shows drop rule; `curl -sI http://localhost/health` → 502 or 504; `curl -s http://127.0.0.1:8080/health` → 200 |
+| **Behavioral postcondition** | Traffic to port 8080 on the external interface is dropped, simulating a network partition. Loopback connectivity is preserved. All E‑series checks fail because nginx cannot reach the app. |
+| **Failing checks** | E-001, E-002, E-003, E-004, E-005 |
+| **Invariant checks** | S-001, P-001, P-002 (app still running and listening) |
+| **Apply** | `exec.RunMutation("nft", "add", "rule", "inet", "lab_filter", "LAB-FAULT", "iif", "enp0s8", "tcp", "dport", "8080", "drop")` |
+| **Recover** | `exec.RunMutation("nft", "flush", "chain", "inet", "lab_filter", "LAB-FAULT")` |
+
+---
+
 ## §8 — Model Completeness Condition
 
 The fault model is complete when:
 
-**Forward direction:** every fault in the catalog maps to at least one conformance check ID in `FailingChecks`. Permitted exceptions: F-008 and F-014 (empty `FailingChecks` by design — see §7.1). Baseline behaviors in §10 are not faults and are not subject to this condition.
+**Forward direction:** every fault in the catalog maps to at least one conformance check ID in `FailingChecks`, with permitted exceptions for faults that are silent to the conformance suite by design (F‑008, F‑014, F‑020).
 
-**Reverse direction:** every conformance check in `conformance-model.md` §3 that references a fault ID in its `Maps to` field has a corresponding entry in this catalog.
+**Reverse direction:** every conformance check in `conformance-model.md` §3 that has a non-empty `Maps to` field references at least one fault in this catalog.
 
-**Observability:** every fault has at least one `Observable` command that produces distinguishable output when the fault is active.
+**Observability:** every fault has at least one `Observable` command that produces distinguishable output when the fault is active vs conformant.
 
-**Apply/Recover specification:** every fault catalog entry has complete `Apply` and `Recover` step sequences. Non-reversible faults have `Recover` returning an error directing to R3. No fault leaves the environment in an unrecoverable state.
+**Apply/Recover:** every fault has a fully specified `Apply` and `Recover` step sequence. Non‑reversible faults have `Recover` returning an error directing to R3.
 
-**ResetTier validity:** every fault's `ResetTier` is one of `R1`, `R2`, `R3`. No other values are permitted.
-
----
+**Recovery:** every fault has a defined `ResetTier` (`R1`, `R2`, or `R3`). Baseline behaviors (§10) are not faults and do not have `ResetTier` values.
 
 ---
 
@@ -746,10 +813,16 @@ These entries document observable properties of the canonical conformant environ
 - **R3 recovery:** both faults are correctly recovered by `lab reset --tier R3`.
 - **Testing note:** to fully exercise F‑008 or F‑014, the operator must manually rebuild the service binary with the required build flag and redeploy.
 
-### 11.2 — All Other Faults
+### 11.2 — F‑019, F‑020, F‑021 (New Faults)
 
-- All 14 reversible faults (F‑001–F‑007, F‑009, F‑010, F‑013, F‑015–F‑018) are implemented exactly as specified in their catalog entries, including Apply, Recover, PreconditionChecks, and postcondition verification.
-- The one‑fault constraint, atomicity rule, and reversibility semantics are enforced by the current control plane.
+- All three faults are fully implemented and verified on live hardware.
+- F‑019 (block exhaustion) fills the `/var/lib/app` loopback mount via `dd`; Apply may return a non‑zero exit from `dd` when the disk fills, which is expected and the fault is applied successfully.
+- F‑020 (chaos latency) writes `CHAOS_LATENCY_MS=400` to `/etc/app/chaos.env` and restarts the service; all requests except `/health` are delayed by ~400ms.
+- F‑021 (nftables drop rule) inserts a rule scoped to the physical interface; loopback traffic is unaffected. On a single‑VM lab, the rule is visible via `nft list chain` but does not block `localhost` traffic.
+
+### 11.3 — Post‑Apply Verification
+
+- After a successful `Apply`, the control plane now runs the fault's `FailingChecks` against the live observer and warns on stderr if any expected failure still passes.
 
 ---
 

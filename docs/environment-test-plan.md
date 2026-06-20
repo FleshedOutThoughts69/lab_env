@@ -1,3 +1,7 @@
+Here is the fully updated Environment Test Plan, with all check counts changed to 25, the three new faults added to the verification table, the integrity script expanded for new endpoints and chaos modes, and the quick checklist updated to demonstrate a new fault and the `/headers` endpoint.
+
+---
+
 # Environment Test Plan
 
 ## Version 1.0.0
@@ -19,7 +23,7 @@ A 30-minute end-to-end check for a freshly provisioned VM. Run this in order aft
 ```bash
 sudo lab validate
 ```
-**Expected:** `CONFORMANT` on stdout; exit 0; all 23 checks pass.
+**Expected:** `CONFORMANT` on stdout; exit 0; all 25 checks pass.
 
 ```bash
 sudo lab status --json | jq '{state, active_fault, classification_valid}'
@@ -30,7 +34,7 @@ sudo lab status --json | jq '{state, active_fault, classification_valid}'
 
 ### 1.2 One fault from each layer
 
-Apply one representative fault from each layer, verify it, then reset. These five checks cover the full dependency chain.
+Apply one representative fault from each layer, verify it, then reset. These checks cover the full dependency chain, now including the new chaos and network faults.
 
 **Filesystem layer — F-001 (missing config file)**
 
@@ -76,15 +80,24 @@ sudo lab reset --tier R1
 sudo lab validate                               # CONFORMANT
 ```
 
-**Service config layer — F-002 (wrong listen port)**
+**Service config layer — F-020 (chaos latency)**
 
 ```bash
-sudo lab fault apply F-002
-ss -ltnp | grep 9090                           # app on wrong port
-curl -s 127.0.0.1:9090/health                  # 200 direct
-curl -s localhost/health                        # 502 via nginx
+sudo lab fault apply F-020
+time curl -s http://localhost/ > /dev/null     # takes ≥400ms
+cat /run/app/telemetry.json | jq .chaos_active  # true
 sudo lab reset --tier R2
 sudo lab validate                                # CONFORMANT
+```
+
+**New endpoint verification — /headers and /reset**
+
+```bash
+# /headers returns Host header (H‑001)
+curl -s http://localhost/headers | jq -e '.Host != ""'
+
+# /reset causes connection reset (H‑002)
+curl -v http://localhost/reset 2>&1 | grep -q 'reset'
 ```
 
 ---
@@ -152,6 +165,9 @@ Quick one-liner verification for each fault. Apply the fault, run the verificati
 | F-016 | `sudo lab fault apply F-016` | `ss -ltnp \| grep '0.0.0.0:8080'` | app bound to all interfaces | R2 |
 | F-017 | `sudo lab fault apply F-017` | `curl -s localhost/ \| jq .env` | `""` (empty string) | R2 |
 | F-018 | `sudo lab fault apply F-018` | `df -i /var/lib/app \| awk 'NR==2{print $5}'` | `100%` | R2 |
+| **F-019** | `sudo lab fault apply F-019` | `df -h /var/lib/app \| awk 'NR==2{print $5}'` | `100%` (block usage) | R2 |
+| **F-020** | `sudo lab fault apply F-020` | `time curl -s http://localhost/ > /dev/null` | takes ≥400ms | R2 |
+| **F-021** | `sudo lab fault apply F-021` | `sudo nft list chain inet lab_filter LAB-FAULT \| grep drop` | drop rule present | R2 |
 
 ¹ *F‑008 / F‑014 Apply returns an error. The verification shown assumes the fault was manually activated via binary rebuild. Without rebuild, `sudo lab validate` exits 0 because no mutation occurred.*
 
@@ -245,7 +261,7 @@ The environment is designed for learner-driven investigation. A learner with `su
 | Operation | Classification | Behavior | Recovery |
 |---|---|---|---|
 | `sudo ufw enable` | **Breaks conformance** | Blocks ports 80/443; E-series checks fail; ufw is not the lab firewall model | `sudo ufw disable` |
-| `sudo nft flush ruleset` | **Recoverable** | Removes the LAB-FAULT chain; nftables faults (F-021 if implemented) stop working; R2 reset rebuilds the chain via bootstrap step 14 — but R2 does NOT run bootstrap; only R3 does | `sudo bash /opt/lab-env/scripts/bootstrap.sh` to recreate nftables config |
+| `sudo nft flush ruleset` | **Recoverable** | Removes the LAB-FAULT chain; nftables faults (F-021) stop working; R2 reset does NOT run bootstrap; only R3 or manual restore | `sudo bash /opt/lab-env/scripts/bootstrap.sh` to recreate nftables config |
 | `sudo nft add rule inet lab_filter LAB-FAULT drop` | **Recoverable** | Network drops; flush the chain to recover | `sudo nft flush chain inet lab_filter LAB-FAULT` |
 | Change VM network interface | **Unsupported** | nginx listens on `0.0.0.0:80`; as long as the interface has an IP, conformance holds. Conformance does not test external reachability. | None needed for conformance |
 
@@ -406,6 +422,7 @@ check "app.service active"       systemctl is-active app.service --quiet
 check "app.service enabled"      systemctl is-enabled app.service --quiet
 check "nginx active"             systemctl is-active nginx --quiet
 check "nginx enabled"            systemctl is-enabled nginx --quiet
+check "devuser exists"           id devuser
 
 echo "=== Process state ==="
 check "appuser running server"   pgrep -u appuser server
@@ -417,8 +434,12 @@ echo "=== Endpoints ==="
 check "GET /health → 200"        curl -sf http://localhost/health
 check "GET / → 200"              curl -sf http://localhost/
 check "GET /health body ok"      bash -c "curl -s localhost/health | jq -e '.status==\"ok\"'"
+check "GET /health app_env"      bash -c "curl -s localhost/health | jq -e '.app_env==\"prod\"'"
+check "GET /health config_loaded" bash -c "curl -s localhost/health | jq -e '.config_loaded==true'"
 check "X-Proxy: nginx header"    bash -c "curl -sI localhost/ | grep -q 'X-Proxy: nginx'"
 check "HTTPS app.local → 200"   curl -skf https://app.local/health
+check "GET /headers → Host"     bash -c "curl -s localhost/headers | jq -e '.Host != \"\"'"
+check "GET /reset → RST"        curl -v http://localhost/reset 2>&1 | grep -q 'reset'
 
 echo "=== Filesystem ==="
 check "binary mode 750"          sudo bash -c "stat -c '%a' /opt/app/server | grep -q 750"
@@ -426,6 +447,11 @@ check "config exists mode 640"   bash -c "stat -c '%a' /etc/app/config.yaml | gr
 check "log dir mode 755"         bash -c "stat -c '%a' /var/log/app | grep -q 755"
 check "state dir mode 755"       bash -c "stat -c '%a' /var/lib/app | grep -q 755"
 check "nginx config syntax"      sudo nginx -t
+
+echo "=== Chaos & telemetry ==="
+check "chaos_active is false"    bash -c "cat /run/app/telemetry.json | jq -e '.chaos_active == false'"
+check "chaos_modes is empty"     bash -c "cat /run/app/telemetry.json | jq -e '.chaos_modes == []'"
+check "chaos.env is empty"       bash -c "test ! -s /etc/app/chaos.env || test $(wc -c < /etc/app/chaos.env) -eq 0"
 
 echo "=== Control plane ==="
 check "state.json readable"      jq . /var/lib/lab/state.json
@@ -454,11 +480,14 @@ sudo lab validate || { echo "Not conformant — run sudo lab reset --tier R2"; e
 sudo lab status --json | jq -e '.active_fault == null' \
   || { echo "Fault still active — run sudo lab reset"; exit 1; }
 
-# 3. Audit log clear (optional — create a clean start marker)
+# 3. Verify learner account exists
+id devuser || { echo "devuser missing — re-run bootstrap.sh"; exit 1; }
+
+# 4. Audit log clear (optional — create a clean start marker)
 echo "--- session start $(date -u +%Y-%m-%dT%H:%M:%SZ) ---" \
   | sudo tee -a /var/lib/lab/audit.log > /dev/null
 
-# 4. Snapshot (if VM supports it — strongly recommended)
+# 5. Snapshot (if VM supports it — strongly recommended)
 # VBoxManage snapshot <vm> take "pre-session-$(date +%Y%m%d)"
 
 echo "Environment ready."

@@ -1,8 +1,12 @@
+The three new faults have been added to the Fault Implementation Guide.  I’m printing the fully updated document below, with **F‑019**, **F‑020**, and **F‑021** inserted in numerical order after F‑018.
+
+---
+
 # Fault Implementation Guide
 
 ## Version 1.0.0
 
-> **Authority:** this document describes the exact mutation and reversion mechanics for every fault in the catalog, including shell-equivalent commands, transient side effects during apply and recover, timing characteristics, and monitoring signals. The formal specification is `fault-model.md §7.2`. This document is the operator-facing implementation view.
+> **Authority:** this document describes the exact mutation and reversion mechanics for every fault in the catalog, including shell‑equivalent commands, transient side effects during apply and recover, timing characteristics, and monitoring signals. The formal specification is `fault-model.md §7.2`. This document is the operator‑facing implementation view.
 >
 > **Companion documents:** `docs/fault-matrix-runbook.md` (diagnostic reference), `fault-model.md §7.2` (formal spec with full postcondition definitions).
 
@@ -12,7 +16,7 @@
 
 Each fault entry has five sections:
 
-**Mutation vector** — what the control plane does to the system when `lab fault apply <ID>` succeeds. Expressed as both executor calls (what the Go code does) and shell-equivalent commands (what you could reproduce manually).
+**Mutation vector** — what the control plane does to the system when `lab fault apply <ID>` succeeds. Expressed as both executor calls (what the Go code does) and shell‑equivalent commands (what you could reproduce manually).
 
 **Reversion vector** — what the control plane does when `lab reset --tier <R>` runs. Same dual representation.
 
@@ -825,6 +829,141 @@ touch /var/lib/app/test                  # "No space left on device"
 curl localhost/health                    # 200 — service alive
 curl localhost/                          # 500 — state write fails
 ls /var/lib/app/file_* | wc -l          # 100000 files while fault active
+```
+
+---
+
+## F-019 — Block exhaustion (disk full)
+
+### Mutation vector
+
+```
+Executor: exec.RunMutation("dd", "if=/dev/zero", "of=/var/lib/app/fill", "bs=1M", "count=100")
+
+Shell equivalent:
+  sudo dd if=/dev/zero of=/var/lib/app/fill bs=1M count=100 2>/dev/null
+```
+
+`dd` fills the 50 MiB loopback mount. The command exits with a non‑zero status when the disk is full — this is expected and the fault is considered applied. The state file is updated to DEGRADED.
+
+### Reversion vector
+
+```
+Executor: exec.RunMutation("rm", "-f", "/var/lib/app/fill")
+
+Shell equivalent:
+  sudo rm -f /var/lib/app/fill
+```
+
+### Apply side effects
+
+During the `dd` execution (5–10 seconds), block usage climbs to 100%. Once full, the service’s `touchStatePath()` write fails because it now writes a non‑zero payload (`"ok"`) to force block allocation. `GET /` returns 500; `GET /health` continues returning 200. The service sets its internal status to `Unhealthy`.
+
+**Key diagnostic property:** `df -h /var/lib/app` shows 100% block usage; `df -i` shows free inodes. This distinguishes block exhaustion (F‑019) from inode exhaustion (F‑018).
+
+### Recover side effects
+
+The fill file is deleted; block usage drops immediately. The next `GET /` request succeeds without a service restart. Recovery is visible in real time via `df -h`.
+
+### Monitoring signals
+
+```bash
+df -h /var/lib/app                  # 100% usage while fault active
+curl localhost/health               # 200
+curl localhost/                     # 500
+cat /run/app/status                 # Unhealthy
+cat /run/app/telemetry.json | jq .disk_usage_percent  # near 100
+```
+
+---
+
+## F-020 — Chaos latency injection
+
+### Mutation vector
+
+```
+Executor:
+  1. exec.WriteFile("/etc/app/chaos.env", []byte("CHAOS_LATENCY_MS=400\n"), 0644, "appuser", "appuser")
+  2. exec.Systemctl("restart", "app.service")
+
+Shell equivalent:
+  echo "CHAOS_LATENCY_MS=400" | sudo tee /etc/app/chaos.env
+  sudo chmod 0644 /etc/app/chaos.env
+  sudo systemctl restart app.service
+```
+
+### Reversion vector
+
+```
+Executor:
+  1. exec.WriteFile("/etc/app/chaos.env", []byte{}, 0644, "appuser", "appuser")
+  2. exec.Systemctl("restart", "app.service")
+
+Shell equivalent:
+  echo "" | sudo tee /etc/app/chaos.env
+  sudo systemctl restart app.service
+```
+
+### Apply side effects
+
+Service is down for ~1 second during restart. After restart, every request (except `/health`) is delayed by exactly 400 ms. `/health` is exempt from chaos latency to preserve the E‑001 diagnostic signal. Telemetry shows `chaos_active: true` with `chaos_modes: ["latency"]`.
+
+No conformance checks fail — the fault is observable via timing and telemetry, not via the check catalog.
+
+### Recover side effects
+
+`chaos.env` is cleared; service restarts with zero latency.
+
+### Monitoring signals
+
+```bash
+time curl -s http://localhost/ > /dev/null       # ~400ms
+time curl -s http://localhost/health > /dev/null  # < 50ms (exempt)
+cat /run/app/telemetry.json | jq '{chaos_active, chaos_modes}'
+# {"chaos_active": true, "chaos_modes": ["latency"]}
+```
+
+---
+
+## F-021 — nftables network drop
+
+### Mutation vector
+
+```
+Executor: exec.RunMutation("nft", "add", "rule", "inet", "lab_filter", "LAB-FAULT",
+  "iif", "enp0s8", "tcp", "dport", "8080", "drop")
+
+Shell equivalent:
+  sudo nft add rule inet lab_filter LAB-FAULT iif enp0s8 tcp dport 8080 drop
+```
+
+The rule drops TCP traffic to port 8080 arriving on the external interface (`enp0s8`). Loopback traffic is unaffected, so direct `curl 127.0.0.1:8080` still works.
+
+### Reversion vector
+
+```
+Executor: exec.RunMutation("nft", "flush", "chain", "inet", "lab_filter", "LAB-FAULT")
+
+Shell equivalent:
+  sudo nft flush chain inet lab_filter LAB-FAULT
+```
+
+### Apply side effects
+
+No service restart. The nftables rule takes effect immediately. nginx can no longer reach the upstream on port 8080 via the external interface, so all proxied requests return 502 or 504. Direct access to `127.0.0.1:8080` continues to work. The fault is verified by inspecting the nft chain directly.
+
+**Note:** On a single‑VM lab, all traffic goes through loopback, so the external‑interface rule may not affect `localhost` traffic. The fault demonstrates the diagnostic pattern for network‑layer faults and the nft chain serves as the authoritative signal.
+
+### Recover side effects
+
+Chain is flushed; all rules removed. nginx connectivity restored immediately.
+
+### Monitoring signals
+
+```bash
+sudo nft list chain inet lab_filter LAB-FAULT   # shows drop rule
+curl -sI localhost/health                       # 502 or 504 via proxy
+curl -s http://127.0.0.1:8080/health            # 200 direct
 ```
 
 ---

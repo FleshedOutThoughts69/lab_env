@@ -386,3 +386,34 @@ The state model is complete when:
 **Relationship to `canonical-environment.md`:** the environment specification instantiates this model. The `lab` CLI in §13 of that document is the executable implementation of this state machine. The conformance suite in §6 of that document is the executable expression of the conformance model.
 
 **Version consistency:** this document's version MUST match `conformance-model.md` and `fault-model.md`. The three documents form a coherent versioned set.
+
+---
+
+## §8 — Current Implementation Status
+
+> **Purpose:** this section documents the delta between the aspirational specification above and the control‑plane implementation that was built, tested, and verified on live Ubuntu 22.04 (aarch64) hardware as of June 2026.
+
+### 8.1 — `lab status` Locking on State Write
+
+- **Spec says** (§4.1, §4.2): `lab status` reads state and writes reconciliation results; the spec does not explicitly require a lock.
+- **Implementation:** `lab status` now **acquires the mutation lock** before every state‑file write (reconciliation, classification‑validity restoration, fresh‑file creation). This prevents read‑modify‑write races with concurrent mutation commands. The read‑only observation phase remains lock‑free.
+
+### 8.2 — Detection Algorithm Enhancement
+
+- **Spec says** (§4.2): the algorithm uses only the lightweight checks (P‑001, P‑002, S‑003, E‑001).
+- **Implementation:** an additional step was added: after the lightweight checks, the algorithm also probes the root endpoint (`GET /`) directly via the observer. If the service returns a non‑200 status (e.g., 500 due to a broken state directory), a synthetic failing E‑002 result is appended to the lightweight results before classification. This allows `lab status` to correctly detect BROKEN when the state directory is unwritable, even though the lightweight checks pass. The spec’s detection algorithm is preserved; this is an additional evidence source that improves classification accuracy.
+
+### 8.3 — Recovery from Missing or Corrupt State File
+
+- **Spec says** (§4.2): if `state.json` cannot be read, report UNKNOWN.
+- **Implementation:** when the state file is missing or corrupt and the runtime evidence is sufficient to determine a known state, `lab status` now writes a fresh `state.json` with the detected state and `classification_valid: true`. This allows a single `lab status` call to recover from both missing and corrupt state files, rather than requiring a separate `lab validate` step. The UNKNOWN classification is still returned when runtime evidence is contradictory.
+
+### 8.4 — `classification_valid` in Status Output
+
+- **Spec says** (§2.3, §4.2): `classification_valid` is part of the state file schema.
+- **Implementation:** `classification_valid` is now included in the `StatusResult` JSON output, making it visible to operators and tests without reading the state file directly. A corresponding schema drift lock test has been added.
+
+### 8.5 — Interrupt Handling
+
+- **Spec says** (§3.5): interrupted operations may leave the system in an intermediate state; `classification_valid` is set to `false`.
+- **Implementation:** a signal handler was added to `app.go` that on SIGINT/SIGTERM immediately invalidates classification, writes an interrupt audit entry, and exits with code 4. The current operation is not allowed to complete. Recovery is via `lab status`, which re‑detects from runtime and restores `classification_valid: true`.

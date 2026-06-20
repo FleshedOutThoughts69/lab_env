@@ -4,7 +4,7 @@
 
 ---
 
-> **Audience:** implementer‑primary. This document defines the runtime contract for the lab’s Go HTTP service – the “subject” application – within the canonical lab environment. It is a companion to the Canonical Lab Environment Specification v1.5.0 and the semantic model documents (Conformance Model v1.2.0, System State Model v1.3.0, Fault Model v1.2.0).  
+> **Audience:** implementer‑primary. This document defines the runtime contract for the lab’s Go HTTP service – the “subject” application – within the canonical lab environment. It is a companion to the Canonical Lab Environment Specification v1.0.0 and the semantic model documents (Conformance Model v1.0.0, System State Model v1.0.0, Fault Model v1.0.0).  
 >
 > **Normative language:** MUST, MUST NOT, SHALL – mandatory. SHOULD – strongly preferred. MAY – permitted.  
 >
@@ -40,7 +40,7 @@ The environment can be in exactly one of six **canonical states**, as defined by
 | **UNPROVISIONED** | Bootstrap not run; no service or configuration exists. |
 | **PROVISIONED** | Bootstrap completed but conformance not yet validated. |
 | **CONFORMANT** | All blocking conformance checks pass. No active fault. Default operational state. |
-| **FAULTED** | A fault from the catalog has been deliberately applied; the environment is intentionally non‑conformant in a specific way. |
+| **DEGRADED** | A fault from the catalog has been deliberately applied; the environment is intentionally non‑conformant in a specific way. |
 | **BROKEN** | One or more blocking checks fail due to unintended modification; no fault is active. |
 | **RECOVERING** | A reset operation is in progress; transitional. |
 
@@ -49,7 +49,7 @@ The environment can be in exactly one of six **canonical states**, as defined by
 - The file `/run/app/status` SHALL contain a short string indicating the service’s view of its health (see §3.4).  
 - The presence/absence of `/run/app/healthy`, `/run/app/loading`, and the value of `chaos_active` in telemetry provide additional evidence to the Control Plane, but they do not replace the canonical classification.
 
-In all documentation and user‑facing output, the canonical state names are those listed above. The application SHALL NOT use state names like “Degraded” or “Fault‑State” in its signals, because those are not canonical states.
+In all documentation and user‑facing output, the canonical state names are those listed above. The application SHALL NOT use state names like “Faulted” or “Fault‑State” in its signals, because those are not canonical states.
 
 ---
 
@@ -66,7 +66,7 @@ All signal files reside under `/run/app/`, a tmpfs directory owned by `appuser:a
 | **Mode** | `644` |
 | **Content** | Single line containing the decimal PID of the running service process. |
 
-The service SHALL write its PID to this file immediately after startup, before it begins accepting requests. The file SHALL be unlinked during graceful shutdown. The conformance suite uses this file to verify that the process table PID matches the expected service process (check **P‑005**).
+The service SHALL write its PID to this file immediately after startup, before it begins accepting requests. The file SHALL be unlinked during graceful shutdown. The Control Plane uses this file to verify process identity against the running service.
 
 ### 3.2 Healthy Marker
 
@@ -148,12 +148,12 @@ The Control Plane MAY read this file for additional diagnostic context, but its 
 - **`memory_rss_mb`**: Resident set size in mebibytes, as reported by the OS.  
 - **`open_fds`**: Number of open file descriptors (should be small, typically < 50).  
 - **`disk_usage_percent`**: Percentage of the `/var/lib/app` loopback mount that is in use (block‑level).  
+- **`inode_usage_percent`**: Percentage of inode usage on the `/var/lib/app` loopback mount. Distinguishes inode exhaustion (F‑018) from block exhaustion when used together with `disk_usage_percent`.  
 - **`requests_total` / `errors_total`**: Cumulative counters since process start. Errors include any 5xx responses and request‑handling panics.  
 - **`chaos_active`**: Boolean; `true` if one or more chaos modes are active.  
 - **`chaos_modes`**: Array of strings; the names of active chaos variables (e.g., `["latency", "drop"]`).
-- **`inode_usage_percent`**: Percentage of inode usage on the /var/lib/app loopback mount. Distinguishes inode exhaustion (F‑018) from block exhaustion when used together with disk_usage_percent.
 
-The telemetry file SHALL be written atomically (write‑temp‑rename) to avoid partial reads. The Control Plane and learners can poll it at any time. The conformance check **L‑004** verifies that `chaos_active` is `false` in the absence of a fault.
+The telemetry file SHALL be written atomically (write‑temp‑rename) to avoid partial reads. The Control Plane and learners can poll it at any time.
 
 ---
 
@@ -165,7 +165,7 @@ The service operates within hard resource boundaries that are instantiated by th
 
 The service is placed in the systemd slice `app.slice`. The slice definition is provided by the environment specification and enforces:
 
-- `MemoryMax=256M` – the service process (and any children) cannot exceed 256 MiB of memory. Exceeding this limit results in the OOM killer terminating the process, which triggers the **BROKEN** state.
+- `MemoryMax=256M` – the service process (and any children) cannot exceed 256 MiB of memory. Exceeding this limit results in the OOM killer terminating the process.
 - `CPUQuota=20%` – the service is limited to 20% of one CPU core equivalent over a scheduling period. Sustained CPU throttling (as reported by `cpu.stat`) is a symptom that the service MAY use to set its internal status to `Degraded`.
 
 The service SHALL NOT modify cgroup settings. It MAY read its own cgroup statistics (e.g., from `/sys/fs/cgroup/`) to populate telemetry and to detect throttling.
@@ -177,7 +177,7 @@ The runtime state directory `/var/lib/app` is a loopback mount backed by a spars
 - The mount is created during provisioning and listed in `/etc/fstab`.  
 - The service SHALL NOT assume the presence of the mount; it MUST gracefully handle I/O errors (e.g., ENOSPC) when writing to `/var/lib/app/state` or other files in that directory.  
 - A full disk (100% block usage) will cause subsequent writes to fail. The service SHALL log these failures and reflect the condition in telemetry (`disk_usage_percent`).  
-- The fault catalog includes a fault (**F‑019**) that deliberately fills this volume.
+- The fault catalog includes faults that exploit both block exhaustion (**F‑019**) and inode exhaustion (**F‑018**).
 
 ### 4.3 Network Filter Chain
 
@@ -241,10 +241,10 @@ Startup, shutdown, and critical error messages are emitted to stdout/stderr and 
 
 This contract is part of the **Canonical Lab Environment Specification Suite**. It interacts with:
 
-- **Canonical Lab Environment Specification v1.5.0** – defines the environment’s overall architecture, filesystem layout, service unit file, provisioning sequence, and the Control Plane. This document references that one for canonical state names, resource instantiation details, and conformance checks (e.g., S‑007, F‑008, F‑009, P‑005, L‑004).  
-- **Conformance Model v1.2.0** – defines the check catalog that validates this contract’s signals.  
-- **System State Model v1.3.0** – defines how the signals in this document are combined with other evidence to determine the canonical state.  
-- **Fault Model v1.2.0** – defines faults that manipulate `chaos.env` or nftables chains described here.  
+- **Canonical Lab Environment Specification v1.0.0** – defines the environment’s overall architecture, filesystem layout, service unit file, provisioning sequence, and the Control Plane. This document references that one for canonical state names, resource instantiation details, and conformance checks.  
+- **Conformance Model v1.0.0** – defines the check catalog that validates this contract’s signals.  
+- **System State Model v1.0.0** – defines how the signals in this document are combined with other evidence to determine the canonical state.  
+- **Fault Model v1.0.0** – defines faults that manipulate `chaos.env` or nftables chains described here.  
 
 No other document may contradict the signal file locations, chaos variable names, or telemetry schema defined here. When a conflict arises between this document and the environment specification about the **application’s runtime behavior**, this document is authoritative. When a conflict concerns **environment provisioning, conformance checks, or state classification**, the environment specification and model documents are authoritative.
 
@@ -258,23 +258,23 @@ No other document may contradict the signal file locations, chaos variable names
 
 | Endpoint | Contract | Implementation | Notes |
 |----------|----------|----------------|-------|
-| `GET /health` | `{"status":"ok","app_env":"…","config_loaded":true}` | `{"status":"ok"}` | Minimal liveness probe; additional fields are aspirational. |
-| `GET /` (success) | `{"status":"ok","path":"/"}` | `{"status":"ok","env":"<app_env>"}` | Returns the sanitised `APP_ENV` value; the `path` field is not present. |
-| `GET /` (failure) | `{"status":"error","msg":"state write failed"}` | Identical | Fully implemented. |
-| `GET /slow` | 5‑second delay, returns JSON with delay field | 5‑second delay, returns `{"status":"ok"}` | Works; the additional JSON fields are aspirational. |
-| `GET /reset` | TCP RST via SO_LINGER | **Not implemented** | The endpoint does not exist. |
-| `GET /headers` | Echoes proxy headers | **Not implemented** | The endpoint does not exist. |
+| `GET /health` | `{"status":"ok","app_env":"…","config_loaded":true}` | **Identical** | Fully implemented. |
+| `GET /` (success) | `{"status":"ok","path":"/"}` | `{"status":"ok","path":"/","env":"<app_env>"}` | Returns both `path` and `env`; contract field `path` is present. |
+| `GET /` (failure) | `{"status":"error","msg":"state write failed"}` | **Identical** | Fully implemented. |
+| `GET /slow` | 5‑second delay, returns JSON with delay field | **Identical** — returns `{"status":"ok","path":"/slow","delay_seconds":5}` | Fully implemented. |
+| `GET /reset` | TCP RST via SO_LINGER | **Identical** — hijacks connection, sets SO_LINGER, closes immediately | Fully implemented and verified. |
+| `GET /headers` | Echoes proxy headers | **Identical** — returns `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Real-IP`, `User-Agent` | Fully implemented and verified. |
 
 ### 8.2 — Telemetry Schema
 
-- The implemented schema includes **12 fields** (the contract lists 10). The additional field is `inode_usage_percent`, added to distinguish inode exhaustion (F‑018) from block exhaustion.
+- The implemented schema includes **12 fields** (the contract lists 11 in §3.5 after the addition of `inode_usage_percent`). The additional field is `inode_usage_percent`, added to distinguish inode exhaustion (F‑018) from block exhaustion.
 - `chaos_modes` is always serialised as `[]` (never `null`).
 
 ### 8.3 — Chaos Injection
 
 - `CHAOS_LATENCY_MS` and `CHAOS_DROP_PERCENT` are implemented and verified.
-- `CHAOS_OOM_TRIGGER`: a `StartOOMForTest` hook exists but is not exported; OOM chaos can be observed by manually setting the environment variable and restarting the service.
-- `CHAOS_IGNORE_SIGTERM`: implemented as a **build flag** (`FaultIgnoreSIGTERM`) rather than a runtime environment variable. This aligns with fault F‑008, which requires a binary rebuild.
+- `CHAOS_OOM_TRIGGER` is fully implemented and verified. The OOM goroutine allocates 64 MiB chunks until the cgroup `MemoryMax=256M` limit kills the process. Confirmed via `dmesg` and `journalctl`. The `StartOOMForTest` hook is exported for unit testing and the sync.Once test passes.
+- `CHAOS_IGNORE_SIGTERM`: implemented as a **build flag** (`FaultIgnoreSIGTERM`) rather than a runtime environment variable. This aligns with fault F‑008, which requires a binary rebuild. The aspirational contract (§5.1) specifies a runtime env var; the current implementation uses a build flag. See F‑008 in the Fault Model for details.
 
 ### 8.4 — Signal Files & Status
 
@@ -295,4 +295,4 @@ No other document may contradict the signal file locations, chaos variable names
 ---
 
 *End of Application Runtime Contract (Data Plane) v1.0.0.*  
-*Aligned with Canonical Lab Environment Specification v1.5.0, Conformance Model v1.2.0, System State Model v1.3.0, Fault Model v1.2.0.*
+*Aligned with Canonical Lab Environment Specification v1.0.0, Conformance Model v1.0.0, System State Model v1.0.0, Fault Model v1.0.0.*

@@ -49,11 +49,21 @@
 
 | Check | Assertion | Exact service signal | Source | Breaks on fault | Survives fault |
 |---|---|---|---|---|---|
-| E‑001 | `GET /health` returns 200 | Handler always returns `HTTP 200` with body `{"status":"ok"}`. Handler **never** touches `/var/lib/app`. | `server/server.go` `handleHealth` | F‑001, F‑003, F‑005, F‑006, F‑009, F‑017 (service crash faults) | **F‑004, F‑018** — state dir broken but `/health` unaffected |
-| E‑002 | `GET /` returns 200 | Handler calls `touchStatePath()` → `os.OpenFile("/var/lib/app/state", O_CREATE\|O_WRONLY\|O_TRUNC, 0600)`. On success: `HTTP 200` with `{"status":"ok","env":"<APP_ENV>"}`. On failure: `HTTP 500` with `{"status":"error","msg":"state write failed"}`. | `server/server.go` `handleRoot`, `touchStatePath` | **F‑004** (chmod 000 `/var/lib/app`), **F‑018** (inode exhaustion) | E‑001, E‑003 always pass independently |
-| E‑003 | `/health` body contains `"status":"ok"` | Body is exactly `{"status":"ok"}` — a string literal, not JSON‑encoded struct. No variation. | `server/server.go` `handleHealth` | Same as E‑001 | Same as E‑001 |
-| E‑004 | Response includes `X-Proxy: nginx` header | **nginx adds this header** via `proxy_set_header X-Proxy nginx` in the nginx config. The service does NOT set this header. If nginx is bypassed (direct access to `127.0.0.1:8080`), this header is absent. | `nginx` — not the service | F‑007 (nginx wrong upstream — nginx returns 502, no X‑Proxy header) | — |
-| E‑005 | `GET https://app.local/health` returns 200 | Service responds to `/health` normally. nginx handles TLS termination for `app.local`. The service only needs to respond correctly on `127.0.0.1:8080`. | `server/server.go` `handleHealth` (via nginx TLS proxy) | F‑007 (nginx wrong upstream) | F‑004, F‑018 — same as E‑001 |
+| E‑001 | `GET /health` returns 200 | Handler always returns `HTTP 200` with body containing `"status":"ok"`. Handler **never** touches `/var/lib/app`. The actual body is `{"status":"ok","app_env":"<APP_ENV>","config_loaded":true}`. | `server/server.go` `handleHealth` | F‑001, F‑003, F‑005, F‑006, F‑009, F‑017, F‑021 (service crash faults + nftables drop) | **F‑004, F‑018, F‑019** — state dir broken but `/health` unaffected |
+| E‑002 | `GET /` returns 200 | Handler calls `touchStatePath()` → `os.OpenFile("/var/lib/app/state", O_CREATE\|O_WRONLY\|O_TRUNC, 0600)`. On success: `HTTP 200` with `{"status":"ok","path":"/","env":"<APP_ENV>"}`. On failure: `HTTP 500` with `{"status":"error","msg":"state write failed"}`. | `server/server.go` `handleRoot`, `touchStatePath` | **F‑004** (chmod 000 `/var/lib/app`), **F‑018** (inode exhaustion), **F‑019** (block exhaustion), **F‑021** (nftables drop) | E‑001, E‑003 always pass independently |
+| E‑003 | `/health` body contains `"status":"ok"` | Body contains `"status":"ok"` as a top‑level JSON field. Additional fields (`app_env`, `config_loaded`) do not affect this check. | `server/server.go` `handleHealth` | Same as E‑001 | Same as E‑001 |
+| E‑004 | Response includes `X-Proxy: nginx` header | **nginx adds this header** via `proxy_set_header X-Proxy nginx` in the nginx config. The service does NOT set this header. If nginx is bypassed (direct access to `127.0.0.1:8080`), this header is absent. | `nginx` — not the service | F‑007 (nginx wrong upstream — nginx returns 502, no X‑Proxy header), F‑021 (nftables drop) | — |
+| E‑005 | `GET https://app.local/health` returns 200 | Service responds to `/health` normally. nginx handles TLS termination for `app.local`. The service only needs to respond correctly on `127.0.0.1:8080`. | `server/server.go` `handleHealth` (via nginx TLS proxy) | F‑007, F‑021 | F‑004, F‑018, F‑019 — same as E‑001 |
+
+---
+
+## H‑series — HTTP Behaviour Checks
+*These checks verify the new endpoints added to the service for diagnostic training.*
+
+| Check | Assertion | Exact service signal | Source | Breaks on fault | Survives fault |
+|---|---|---|---|---|---|
+| H‑001 | `/headers` returns `Host` header | Handler reads `Host`, `X‑Forwarded‑For`, `X‑Forwarded‑Proto`, `X‑Real‑IP`, `User‑Agent` from the incoming request and returns them as JSON. The `Host` field must be present. | `server/server.go` `handleHeaders` | F‑021 (nftables drop blocks access) | F‑004, F‑018, F‑019 |
+| H‑002 | `/reset` causes connection reset | Handler hijacks the TCP connection, sets `SO_LINGER` with zero timeout, and closes immediately. The client receives a TCP RST, not an HTTP response. | `server/server.go` `handleReset` | F‑021 (nftables drop blocks access) | F‑004, F‑018, F‑019 |
 
 ---
 
@@ -105,13 +115,13 @@ These patterns are the primary diagnostic tool. When `lab validate` fails, match
 | S‑001 + E‑series; F‑002 passes, mode 000 | F‑003 (config unreadable) | `stat /etc/app/config.yaml` — mode 0000 |
 | S‑001 + E‑series; F‑002 passes, mode OK | F‑006, F‑009, or F‑017 | `journalctl -u app.service -n 5` |
 | S‑001 + E‑series; F‑001 mode wrong | F‑005 (binary not executable) | `ls -la /opt/app/server` — mode 640 |
-| **E‑002 only**; E‑001 passes | **F‑004** (state dir) or **F‑018** (inodes) | `df -i /var/lib/app` — inodes full → F‑018; else F‑004 |
-| E‑series only; P‑002 passes | F‑007 (nginx wrong upstream) | `ss -ltnp \| grep 8080` — app on 8080, nginx misconfigured |
+| **E‑002 only**; E‑001 passes | **F‑004** (state dir), **F‑018** (inodes), **F‑019** (blocks) | `df -i /var/lib/app` — inodes full → F‑018; `df -h` — blocks full → F‑019; else F‑004 |
+| E‑series only; P‑002 passes | F‑007 (nginx wrong upstream) or F‑021 (nftables drop) | `sudo nft list chain inet lab_filter LAB‑FAULT` — if rule present → F‑021; else F‑007 |
 | P‑002 + E‑series; S‑001 passes | F‑002 (app wrong port) | `ss -ltnp \| grep 9090` — app on wrong port |
 | F‑005 only | F‑015 (nginx config syntax) | `sudo nginx -t` — syntax error |
 | P‑002 only; E‑series pass | F‑016 (app on all interfaces) | `ss -ltnp \| grep 8080` — shows `0.0.0.0` |
 | L‑series only; `lab validate` exits 0 | F‑010 (log deleted) | `lsof +L1 \| grep app.log` — deleted fd held |
-| None; `lab validate` exits 0 | F‑008 or F‑014 | `time systemctl stop app` (F‑008) or `ps \| grep Z` (F‑014) |
+| None; `lab validate` exits 0 | F‑008, F‑014, or F‑020 | `time systemctl stop app` (F‑008); `ps \| grep Z` (F‑014); `time curl -s http://localhost/` takes ~400ms (F‑020) |
 
 ---
 
@@ -120,10 +130,12 @@ These patterns are the primary diagnostic tool. When `lab validate` fails, match
 `GET /health` and `GET /` are deliberately asymmetric:
 
 ```
-GET /health  → never touches /var/lib/app  → survives F‑004, F‑018
-GET /        → always touches /var/lib/app → breaks on F‑004, F‑018
+GET /health  → never touches /var/lib/app  → survives F‑004, F‑018, F‑019
+GET /        → always touches /var/lib/app → breaks on F‑004, F‑018, F‑019
 ```
 
-This asymmetry is the mechanism by which F‑004 and F‑018 produce their diagnostic pattern. If `/health` also touched the state directory, both E‑001 and E‑002 would fail simultaneously and the pattern would be indistinguishable from a service crash (F‑001, F‑003, etc.).
+This asymmetry is the mechanism by which F‑004, F‑018, and F‑019 produce their diagnostic pattern. If `/health` also touched the state directory, both E‑001 and E‑002 would fail simultaneously and the pattern would be indistinguishable from a service crash (F‑001, F‑003, etc.).
 
 The rule is enforced in code by the absence of any `/var/lib/app` reference in `handleHealth`. Any future change that adds state directory access to `/health` breaks this contract.
+
+**Note:** F‑021 (nftables drop) can break **both** E‑001 and E‑002 because nginx cannot reach the app at all, producing 502/504 for every proxied endpoint. In that case, the distinguishing signal is the nft chain itself (`sudo nft list chain inet lab_filter LAB‑FAULT`).
